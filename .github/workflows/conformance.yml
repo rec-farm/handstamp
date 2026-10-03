@@ -17,6 +17,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: false # no Python lock file to key a cache on
       - name: Run the suite
         run: ./conformance/run.sh ${{ github.event_name == 'pull_request' && 'smoke' || 'full' }}
       - name: Upload exported results
