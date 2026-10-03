@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0
       - name: Run the suite
         run: ./conformance/run.sh ${{ github.event_name == 'pull_request' && 'smoke' || 'full' }}
       - name: Upload exported results
