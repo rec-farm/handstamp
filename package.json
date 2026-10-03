@@ -1,0 +1,33 @@
+{
+  "name": "handstamp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter './apps/*' dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "db:migrate": "pnpm --filter @handstamp/server db:migrate",
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "handstamp": "pnpm --filter @handstamp/server cli",
+    "example": "pnpm --filter @handstamp/example-app start",
+    "e2e": "pnpm --filter @handstamp/web build && vitest run --config vitest.e2e.config.ts",
+    "example:idp": "pnpm --filter @handstamp/example-app idp"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "playwright": "^1.63.0",
+    "prettier": "^3.8.0",
+    "tsx": "^4.20.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.0"
+  }
+}

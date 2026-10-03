@@ -1,0 +1,5 @@
+# TLS in front of Handstamp for the conformance run. The suite requires https endpoints.
+handstamp.test {
+	tls internal
+	reverse_proxy handstamp:3000
+}

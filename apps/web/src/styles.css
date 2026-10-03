@@ -1,0 +1,553 @@
+/*
+ * REC design system tokens: copied verbatim from rec-brand DESIGN.md §14, brand v1.3.0
+ * (tag v1.3.0, RodrigoEspinosa/rec-brand). Do not edit this block; update it from a newer tag.
+ * Handstamp's own additions live after the "Handstamp" marker at the end of the file.
+ */
+
+@import 'tailwindcss';
+
+/* `dark:` variant follows our data-theme attribute (dark is default) */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
+/* ───────────────────────── 1. Primitives & static tokens ───────────────────────── */
+@theme {
+  /* Reset Tailwind default palette so only REC colors exist */
+  --color-*: initial;
+
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  /* Ink (dark neutrals) */
+  --color-ink-950: #0a0b0c;
+  --color-ink-900: #101214;
+  --color-ink-850: #16191c;
+  --color-ink-800: #1d2125;
+  --color-ink-700: #23272b;
+  --color-ink-600: #3a4046;
+  --color-ink-500: #555c63;
+
+  /* Paper (light neutrals) */
+  --color-paper-50: #fffcf5;
+  --color-paper-100: #f7f1e3;
+  --color-paper-200: #efe8d8;
+  --color-paper-300: #e5ddcb;
+  --color-paper-400: #ddd3bf;
+  --color-paper-500: #cfc4ad;
+
+  /* Text neutrals */
+  --color-cream: #f4efe3;
+  --color-stone-400: #a8a396;
+  --color-stone-500: #8a867e;
+  --color-slate-600: #4b5b61;
+  --color-slate-500: #5f6b67;
+
+  /* Deep (Reciam teal-navy) */
+  --color-deep-900: #14262e;
+  --color-deep-800: #1b323c;
+  --color-deep-700: #25424e;
+  --color-deep-300: #a9b8b9;
+
+  /* REC Purple */
+  --color-purple-50: #f2edff;
+  --color-purple-100: #e4d9ff;
+  --color-purple-200: #cbb6ff;
+  --color-purple-300: #ac8bff;
+  --color-purple-400: #8e5fff;
+  --color-purple-500: #7638fa;
+  --color-purple-600: #6524e8;
+  --color-purple-700: #521bc2;
+  --color-purple-800: #40179a;
+  --color-purple-900: #2c1169;
+  --color-purple-950: #1a0a40;
+
+  /* Pastel signals */
+  --color-sun-100: #fbefc4;
+  --color-sun-300: #f2c641;
+  --color-sun-400: #e8b931;
+  --color-sun-500: #d9a514;
+  --color-sun-600: #7a5a00;
+  --color-sun-950: #241f10;
+  --color-mint-100: #d6eee3;
+  --color-mint-300: #a8d8c2;
+  --color-mint-400: #4cc79a;
+  --color-mint-500: #2f8f7a;
+  --color-mint-600: #1c6b53;
+  --color-mint-950: #10221b;
+  --color-rose-100: #fbe3e8;
+  --color-rose-300: #f2c9d1;
+  --color-rose-400: #f07a9c;
+  --color-rose-500: #e8739a;
+  --color-rose-600: #c42f52;
+  --color-rose-950: #26121a;
+  --color-lilac-100: #eeebf7;
+  --color-lilac-300: #dcd7ee;
+  --color-lilac-400: #b3a8ee;
+  --color-lilac-600: #5b4fa8;
+  --color-lilac-950: #1a1828;
+
+  /* Fonts */
+  --font-display: 'Archivo', 'Arial Black', system-ui, sans-serif;
+  --font-sans: 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Type scale (size + line-height + tracking + weight) */
+  --text-display-hero: 4.5rem;
+  --text-display-hero--line-height: 0.95;
+  --text-display-hero--letter-spacing: -0.04em;
+  --text-display-hero--font-weight: 800;
+  --text-title-1: 3.5rem;
+  --text-title-1--line-height: 1;
+  --text-title-1--letter-spacing: -0.035em;
+  --text-title-1--font-weight: 800;
+  --text-title-2: 1.75rem;
+  --text-title-2--line-height: 1.15;
+  --text-title-2--letter-spacing: -0.02em;
+  --text-title-2--font-weight: 800;
+  --text-heading: 1.25rem;
+  --text-heading--line-height: 1.25;
+  --text-heading--letter-spacing: -0.01em;
+  --text-heading--font-weight: 700;
+  --text-subheading: 1rem;
+  --text-subheading--line-height: 1.35;
+  --text-subheading--letter-spacing: -0.005em;
+  --text-subheading--font-weight: 700;
+  --text-body-lg: 1rem;
+  --text-body-lg--line-height: 1.55;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.5;
+  --text-body-sm: 0.8125rem;
+  --text-body-sm--line-height: 1.45;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.4;
+  --text-caption--font-weight: 500;
+  --text-stat-xl: 4rem;
+  --text-stat-xl--line-height: 1;
+  --text-stat-xl--font-weight: 800;
+  --text-stat: 2.5rem;
+  --text-stat--line-height: 1;
+  --text-stat--font-weight: 800;
+  --text-stat-sm: 1.5rem;
+  --text-stat-sm--line-height: 1;
+  --text-stat-sm--font-weight: 800;
+  --text-wordmark: 1.125rem;
+  --text-wordmark--line-height: 1;
+  --text-wordmark--letter-spacing: 0.18em;
+  --text-wordmark--font-weight: 700;
+  --text-eyebrow: 0.6875rem;
+  --text-eyebrow--line-height: 1.2;
+  --text-eyebrow--letter-spacing: 0.14em;
+  --text-eyebrow--font-weight: 700;
+  --text-label: 0.6875rem;
+  --text-label--line-height: 1.2;
+  --text-label--letter-spacing: 0.1em;
+  --text-label--font-weight: 700;
+  --text-mono: 0.8125rem;
+  --text-mono--line-height: 1.5;
+  --text-mono-sm: 0.75rem;
+  --text-mono-sm--line-height: 1.45;
+  --text-code: 0.8125rem;
+  --text-code--line-height: 1.6;
+
+  /* Radius */
+  --radius-*: initial;
+  --radius-none: 0;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-full: 9999px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-snap: cubic-bezier(0.3, 1.4, 0.5, 1);
+
+  /* Layout */
+  --container-content: 75rem; /* 1200px → max-w-content */
+  --spacing-sidebar: 16rem; /* 256px → w-sidebar */
+  --spacing-topbar: 3.5rem; /* 56px  → h-topbar */
+
+  /* Breakpoints (Tailwind defaults kept explicit) */
+  --breakpoint-sm: 40rem;
+  --breakpoint-md: 48rem;
+  --breakpoint-lg: 64rem;
+  --breakpoint-xl: 80rem;
+  --breakpoint-2xl: 96rem;
+
+  --animate-pulse-dot: pulse-dot 2s ease-in-out infinite;
+  --animate-blink: blink 2.4s ease-in-out infinite;
+
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
+  }
+  @keyframes blink {
+    0%,
+    92%,
+    100% {
+      transform: scaleY(1);
+    }
+    96% {
+      transform: scaleY(0.1);
+    }
+  }
+}
+
+/* ───────────────────────── 2. Theme values (runtime vars) ───────────────────────── */
+/* Dark — DEFAULT */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+  --canvas: var(--color-ink-950);
+  --surface-1: var(--color-ink-900);
+  --surface-2: var(--color-ink-850);
+  --surface-3: var(--color-ink-800);
+  --sidebar: var(--color-ink-900);
+  --sidebar-fg: var(--color-cream);
+  --sidebar-fg-muted: var(--color-stone-400);
+  --sidebar-hover: var(--color-ink-850);
+  --fg: var(--color-cream);
+  --fg-muted: var(--color-stone-400);
+  --fg-subtle: var(--color-stone-500);
+  --border: var(--color-ink-700);
+  --border-strong: var(--color-ink-600);
+  --border-input: var(--color-ink-600);
+  --shadow-hard-color: var(--color-ink-600);
+  --primary: var(--color-purple-500);
+  --primary-hover: var(--color-purple-400);
+  --primary-fg: var(--color-white);
+  --primary-soft: color-mix(in oklab, var(--color-purple-900) 50%, transparent);
+  --link: var(--color-purple-300);
+  --focus-ring: var(--color-purple-300);
+  --selection: var(--color-purple-950);
+
+  --success-tile: var(--color-mint-950);
+  --success-icon: var(--color-mint-400);
+  --success-text: var(--color-mint-400);
+  --warning-tile: var(--color-sun-950);
+  --warning-icon: var(--color-sun-400);
+  --warning-text: var(--color-sun-400);
+  --danger-tile: var(--color-rose-950);
+  --danger-icon: var(--color-rose-400);
+  --danger-text: var(--color-rose-400);
+  --info-tile: var(--color-lilac-950);
+  --info-icon: var(--color-lilac-400);
+  --info-text: var(--color-lilac-400);
+  --tile-fg: var(--color-cream);
+  --tile-fg-muted: var(--color-stone-400);
+  --danger-solid: #d93f5e;
+
+  --overlay: rgb(10 11 12 / 0.72);
+  --shadow-pop-value: 0 12px 32px -8px rgb(0 0 0 / 0.45);
+
+  /* Default product accent = REC purple (overridden by data-product) */
+  --accent: var(--color-purple-500);
+  --accent-fg: var(--color-white);
+  --accent-tile: var(--color-purple-950);
+  --accent-text: var(--color-purple-300);
+}
+
+/* Paper — LIGHT */
+[data-theme='light'] {
+  color-scheme: light;
+  --canvas: var(--color-paper-100);
+  --surface-1: var(--color-paper-50);
+  --surface-2: var(--color-paper-200);
+  --surface-3: var(--color-paper-300);
+  --sidebar: var(--color-deep-900);
+  --sidebar-fg: var(--color-cream);
+  --sidebar-fg-muted: var(--color-deep-300);
+  --sidebar-hover: var(--color-deep-800);
+  --fg: var(--color-deep-900);
+  --fg-muted: var(--color-slate-600);
+  --fg-subtle: var(--color-slate-500);
+  --border: var(--color-paper-400);
+  --border-strong: var(--color-deep-900);
+  --border-input: var(--color-paper-500);
+  --shadow-hard-color: var(--color-deep-900);
+  --primary: var(--color-purple-600);
+  --primary-hover: var(--color-purple-700);
+  --primary-fg: var(--color-white);
+  --primary-soft: var(--color-purple-50);
+  --link: var(--color-purple-600);
+  --focus-ring: var(--color-purple-600);
+  --selection: var(--color-purple-100);
+
+  --success-tile: var(--color-mint-300);
+  --success-icon: var(--color-deep-900);
+  --success-text: var(--color-mint-600);
+  --warning-tile: var(--color-sun-300);
+  --warning-icon: var(--color-deep-900);
+  --warning-text: var(--color-sun-600);
+  --danger-tile: var(--color-rose-300);
+  --danger-icon: var(--color-deep-900);
+  --danger-text: var(--color-rose-600);
+  --info-tile: var(--color-lilac-300);
+  --info-icon: var(--color-deep-900);
+  --info-text: var(--color-lilac-600);
+  --tile-fg: var(--color-deep-900);
+  --tile-fg-muted: color-mix(in oklab, var(--color-deep-900) 78%, transparent);
+  --danger-solid: var(--color-rose-600);
+
+  --overlay: rgb(20 38 46 / 0.4);
+  --shadow-pop-value: 0 12px 32px -8px rgb(20 38 46 / 0.18);
+
+  --accent: var(--color-purple-600);
+  --accent-fg: var(--color-white);
+  --accent-tile: var(--color-purple-50);
+  --accent-text: var(--color-purple-600);
+}
+
+/* "System" is resolved to dark|light at runtime by applyTheme() (§14.2), so no media-query block is needed. */
+
+/* ───────────────────────── 3. Product accents ───────────────────────── */
+[data-product='stillup'] {
+  --accent: var(--color-sun-400);
+  --accent-fg: var(--color-ink-950);
+  --accent-tile: var(--color-sun-950);
+  --accent-text: var(--color-sun-400);
+}
+[data-theme='light'][data-product='stillup'],
+[data-theme='light'] [data-product='stillup'] {
+  --accent: var(--color-sun-300);
+  --accent-fg: var(--color-deep-900);
+  --accent-tile: var(--color-sun-100);
+  --accent-text: var(--color-sun-600);
+}
+
+[data-product='paramtune'] {
+  --accent: var(--color-mint-400);
+  --accent-fg: var(--color-ink-950);
+  --accent-tile: var(--color-mint-950);
+  --accent-text: var(--color-mint-400);
+}
+[data-theme='light'][data-product='paramtune'],
+[data-theme='light'] [data-product='paramtune'] {
+  --accent: var(--color-mint-300);
+  --accent-fg: var(--color-deep-900);
+  --accent-tile: var(--color-mint-100);
+  --accent-text: var(--color-mint-600);
+}
+
+/* ───────────────────────── 4. Semantic utilities ───────────────────────── */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-fg: var(--sidebar-fg);
+  --color-sidebar-fg-muted: var(--sidebar-fg-muted);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-input: var(--border-input);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-link: var(--link);
+  --color-focus-ring: var(--focus-ring);
+  --color-selection: var(--selection);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-tile: var(--accent-tile);
+  --color-accent-text: var(--accent-text);
+  --color-success-tile: var(--success-tile);
+  --color-success-icon: var(--success-icon);
+  --color-success-text: var(--success-text);
+  --color-warning-tile: var(--warning-tile);
+  --color-warning-icon: var(--warning-icon);
+  --color-warning-text: var(--warning-text);
+  --color-danger-tile: var(--danger-tile);
+  --color-danger-icon: var(--danger-icon);
+  --color-danger-text: var(--danger-text);
+  --color-info-tile: var(--info-tile);
+  --color-info-icon: var(--info-icon);
+  --color-info-text: var(--info-text);
+  --color-tile-fg: var(--tile-fg);
+  --color-tile-fg-muted: var(--tile-fg-muted);
+  --color-danger-solid: var(--danger-solid);
+  --color-overlay: var(--overlay);
+
+  --shadow-hard-sm: 2px 2px 0 0 var(--shadow-hard-color);
+  --shadow-hard: 3px 3px 0 0 var(--shadow-hard-color);
+  --shadow-hard-lg: 5px 5px 0 0 var(--shadow-hard-color);
+  --shadow-pop: var(--shadow-pop-value);
+}
+
+/* ───────────────────────── 5. Base & brand utilities ───────────────────────── */
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    background: var(--canvas);
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: var(--selection);
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-property: color, background-color, border-color, opacity !important;
+    }
+  }
+}
+
+/* Expanded display face: Archivo at 125% width */
+@utility font-display {
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-variation-settings: 'wdth' 125;
+}
+
+/* Stamps: eyebrow / label */
+@utility eyebrow {
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-size: var(--text-eyebrow);
+  line-height: var(--text-eyebrow--line-height);
+  letter-spacing: var(--text-eyebrow--letter-spacing);
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+@utility label-stamp {
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-size: var(--text-label);
+  line-height: var(--text-label--line-height);
+  letter-spacing: var(--text-label--letter-spacing);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* Numbers */
+@utility stat-num {
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* Press interaction for offset-shadowed elements */
+@utility press {
+  transition:
+    transform 80ms var(--ease-snap),
+    box-shadow 80ms var(--ease-snap);
+  &:active {
+    transform: translate(2px, 2px);
+    box-shadow: 0 0 0 0 var(--shadow-hard-color);
+  }
+}
+
+/* Dot-grid texture */
+@utility bg-dot-grid {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    color-mix(in oklab, var(--border) 60%, transparent) 1px,
+    transparent 0
+  );
+  background-size: 8px 8px;
+}
+
+/* ═════════════════════════ Handstamp (not part of the copied block) ═════════════════════════ */
+
+/* Fonts are bundled with @fontsource-variable (imported in main.tsx), whose families carry a
+   "Variable" suffix. CSP is font-src 'self', so nothing loads from Google Fonts. */
+@theme {
+  --font-display: 'Archivo Variable', 'Archivo', 'Arial Black', system-ui, sans-serif;
+  --font-sans:
+    'Figtree Variable', 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:
+    'Geist Mono Variable', 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+/* Signature accent: Lilac. Marks place and product identity only, never actions.
+   Contrast (WCAG): ink-950 on lilac-400 9.15 · deep-900 on lilac-300 11.14 ·
+   lilac-600 on paper-100 5.96 · lilac-400 on ink-900 8.72. Upstream to rec-brand §3.4/§14. */
+[data-product='handstamp'] {
+  --accent: var(--color-lilac-400);
+  --accent-fg: var(--color-ink-950);
+  --accent-tile: var(--color-lilac-950);
+  --accent-text: var(--color-lilac-400);
+}
+[data-theme='light'][data-product='handstamp'],
+[data-theme='light'] [data-product='handstamp'] {
+  --accent: var(--color-lilac-300);
+  --accent-fg: var(--color-deep-900);
+  --accent-tile: var(--color-lilac-100);
+  --accent-text: var(--color-lilac-600);
+}
+
+@layer base {
+  body {
+    min-height: 100dvh;
+    background: var(--canvas);
+  }
+}
+
+/* The wordmark until the outlined asset exists.
+   TODO(brand): replace with the outlined HANDSTAMP lockup from rec-brand/build.py (§2.10). */
+@utility wordmark {
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-variation-settings: 'wdth' 125;
+  font-weight: 700;
+  font-size: var(--text-wordmark);
+  line-height: 1;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* Text input (DESIGN §10.2): surface-2 in dark, paper-50 in light, input border, purple focus. */
+@utility input {
+  display: block;
+  width: 100%;
+  height: 2.75rem;
+  padding: 0 0.875rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-input);
+  background: var(--surface-2);
+  color: var(--fg);
+  font-size: var(--text-body);
+  transition:
+    border-color 140ms,
+    box-shadow 140ms;
+  &::placeholder {
+    color: var(--fg-subtle);
+  }
+  &:focus-visible {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 25%, transparent);
+  }
+}
+[data-theme='light'] .input {
+  background: var(--surface-1);
+}

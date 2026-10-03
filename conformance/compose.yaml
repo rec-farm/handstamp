@@ -1,0 +1,67 @@
+# Local OpenID conformance run: Handstamp (behind Caddy TLS) + the OIDF suite, pinned.
+# Use ./run.sh rather than starting this directly.
+name: handstamp-conformance
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: handstamp
+      POSTGRES_PASSWORD: handstamp
+      POSTGRES_DB: handstamp
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U handstamp']
+      interval: 2s
+      retries: 30
+  handstamp:
+    image: handstamp:conformance
+    build: { context: .., dockerfile: Dockerfile }
+    environment:
+      DATABASE_URL: postgres://handstamp:handstamp@db:5432/handstamp
+      HANDSTAMP_ISSUER: https://handstamp.test
+      HANDSTAMP_SECRET_KEY: Y29uZm9ybWFuY2Utb25seS1rZXktbm90LWEtc2VjcmV0IQ==
+      TRUST_PROXY: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      HANDSTAMP_CLIENTS_FILE: /conformance/clients.json
+      CONFORMANCE_1_SECRET: conformance-client-one-secret-0123456789
+      CONFORMANCE_2_SECRET: conformance-client-two-secret-0123456789
+      CONFORMANCE_POST_SECRET: conformance-client-post-secret-012345678
+      HANDSTAMP_DEV_LOGIN: '1'
+      HANDSTAMP_CONFORMANCE_MODE: '1'
+      KEY_ROTATION_DAYS: '0'
+      # The whole suite runs from one IP.
+      RATE_LIMIT_SCALE: '50'
+      LOG_LEVEL: warn
+    volumes:
+      - ./clients.json:/conformance/clients.json:ro
+    depends_on:
+      db: { condition: service_healthy }
+  caddy:
+    image: caddy:2-alpine
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    networks:
+      default:
+        aliases: [handstamp.test]
+    depends_on: [handstamp]
+  mongodb:
+    image: mongo:6.0.13
+  server:
+    image: registry.gitlab.com/openid/conformance-suite:release-v5.3.1
+    environment:
+      BASE_URL: https://localhost.emobix.co.uk:8443
+      BASE_MTLS_URL: https://localhost.emobix.co.uk:8444
+      MONGODB_HOST: mongodb
+      SPRING_PROFILES_ACTIVE: dev
+      # Placeholders the suite's own login page requires; unused in dev mode.
+      OIDC_GOOGLE_CLIENTID: google-client
+      OIDC_GOOGLE_SECRET: google-secret
+      OIDC_GITLAB_CLIENTID: gitlab-client
+      OIDC_GITLAB_SECRET: gitlab-secret
+    depends_on: [mongodb]
+  nginx:
+    image: registry.gitlab.com/openid/conformance-suite/nginx:release-v5.3.1
+    ports:
+      - '127.0.0.1:8443:8443'
+    networks:
+      default:
+        aliases: [localhost.emobix.co.uk]
+    depends_on: [server]

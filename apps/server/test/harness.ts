@@ -1,0 +1,191 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import pg from 'pg';
+import { buildApp } from '../src/app.ts';
+import { bootstrap } from '../src/runtime.ts';
+
+export const TEST_DATABASE_URL =
+  process.env.TEST_DATABASE_URL ?? 'postgres://handstamp:handstamp@127.0.0.1:5438/handstamp_test';
+
+export const SECRETS = {
+  RP_FIRST_SECRET: 'first-party-secret-0123456789abcdef0123',
+  RP_THIRD_SECRET: 'third-party-secret-0123456789abcdef0123',
+  RP_NOPKCE_SECRET: 'no-pkce-secret-0123456789abcdef01234567',
+};
+
+export const CLIENTS = [
+  {
+    clientId: 'rp-first',
+    name: 'First Party',
+    redirectUris: ['https://rp.example/cb'],
+    postLogoutRedirectUris: ['https://rp.example/bye'],
+    scopes: ['openid', 'profile', 'email', 'groups', 'offline_access'],
+    firstParty: true,
+    secretEnv: 'RP_FIRST_SECRET',
+  },
+  {
+    clientId: 'rp-third',
+    name: 'Third Party',
+    redirectUris: ['https://third.example/cb'],
+    scopes: ['openid', 'profile', 'email'],
+    secretEnv: 'RP_THIRD_SECRET',
+  },
+  {
+    clientId: 'rp-public',
+    name: 'Public App',
+    redirectUris: ['http://localhost:9999/cb'],
+    tokenEndpointAuthMethod: 'none',
+  },
+  {
+    clientId: 'rp-nopkce',
+    name: 'Conformance Without PKCE',
+    redirectUris: ['https://nopkce.example/cb'],
+    requirePkce: false,
+    secretEnv: 'RP_NOPKCE_SECRET',
+  },
+];
+
+export async function freePort() {
+  return new Promise<number>((resolve, reject) => {
+    const server = createServer();
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address() as { port: number };
+      server.close(() => resolve(port));
+    });
+    server.on('error', reject);
+  });
+}
+
+// Each test file gets its own database so files can run in parallel.
+async function resetDatabase(name: string) {
+  const admin = new pg.Client({ connectionString: TEST_DATABASE_URL });
+  await admin.connect();
+  const database = `handstamp_test_${name}`;
+  const exists = await admin.query('SELECT 1 FROM pg_database WHERE datname = $1', [database]);
+  if (!exists.rowCount) await admin.query(`CREATE DATABASE ${database}`);
+  await admin.end();
+  const url = new URL(TEST_DATABASE_URL);
+  url.pathname = `/${database}`;
+  const client = new pg.Client({ connectionString: url.href });
+  await client.connect();
+  await client.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
+  await client.end();
+  return url.href;
+}
+
+export async function startTestServer(
+  name: string,
+  {
+    env = {},
+    clients = [],
+    web = 'none',
+    port: fixedPort,
+  }: {
+    env?: Record<string, string>;
+    clients?: object[];
+    web?: 'none' | 'static';
+    port?: number; // when mocks need Handstamp's address before it starts
+  } = {},
+) {
+  const databaseUrl = await resetDatabase(name);
+  const port = fixedPort ?? (await freePort());
+  const dir = mkdtempSync(join(tmpdir(), 'handstamp-test-'));
+  const clientsFile = join(dir, 'clients.json');
+  writeFileSync(clientsFile, JSON.stringify({ clients: [...CLIENTS, ...clients] }));
+  const issuer = `http://localhost:${port}`;
+  const runtime = await bootstrap({
+    NODE_ENV: 'test',
+    DATABASE_URL: databaseUrl,
+    HANDSTAMP_ISSUER: issuer,
+    HANDSTAMP_SECRET_KEY: Buffer.alloc(32, 9).toString('base64'),
+    HANDSTAMP_CLIENTS_FILE: clientsFile,
+    HANDSTAMP_DEV_LOGIN: '1',
+    LOG_LEVEL: 'warn',
+    ...SECRETS,
+    ...env,
+  });
+  const built = await buildApp({
+    ...runtime,
+    web:
+      web === 'static'
+        ? { mode: 'static', distDir: fileURLToPath(new URL('../../web/dist/', import.meta.url)) }
+        : { mode: 'none' },
+  });
+  await built.app.listen({ host: '127.0.0.1', port });
+  return {
+    ...runtime,
+    ...built,
+    issuer,
+    async close() {
+      await built.app.close();
+      await runtime.pool.end();
+    },
+  };
+}
+
+type Cookie = { value: string; path: string };
+
+// Just enough browser: path-scoped cookies, manual redirects, Origin on POSTs.
+export class Browser {
+  readonly cookies = new Map<string, Cookie>();
+
+  constructor(readonly origin: string) {}
+
+  #store(response: Response) {
+    for (const line of response.headers.getSetCookie()) {
+      const [pair, ...attributes] = line.split(';').map((part) => part.trim());
+      const index = pair.indexOf('=');
+      const name = pair.slice(0, index);
+      const value = pair.slice(index + 1);
+      const attr = (key: string) =>
+        attributes.find((a) => a.toLowerCase().startsWith(`${key}=`))?.split('=')[1];
+      const expired =
+        attr('max-age') === '0' || (attr('expires') && new Date(attr('expires')!) < new Date());
+      if (expired || value === '') this.cookies.delete(name);
+      else this.cookies.set(name, { value, path: attr('path') ?? '/' });
+    }
+  }
+
+  #cookieHeader(url: URL) {
+    return [...this.cookies]
+      .filter(
+        ([, c]) =>
+          url.pathname === c.path ||
+          url.pathname.startsWith(c.path.endsWith('/') ? c.path : `${c.path}/`) ||
+          c.path === '/',
+      )
+      .map(([name, c]) => `${name}=${c.value}`)
+      .join('; ');
+  }
+
+  async request(target: string, init: RequestInit & { json?: unknown } = {}) {
+    const url = new URL(target, this.origin);
+    const headers = new Headers(init.headers);
+    const cookie = this.#cookieHeader(url);
+    if (cookie) headers.set('cookie', cookie);
+    let body = init.body;
+    if (init.json !== undefined) {
+      headers.set('content-type', 'application/json');
+      body = JSON.stringify(init.json);
+    }
+    if (init.method && init.method !== 'GET' && !headers.has('origin'))
+      headers.set('origin', this.origin);
+    const response = await fetch(url, { ...init, headers, body, redirect: 'manual' });
+    this.#store(response);
+    return response;
+  }
+
+  // Follows redirects that stay on the issuer; stops at the first one that leaves it.
+  async follow(target: string) {
+    let response = await this.request(target);
+    for (let hop = 0; hop < 10 && [302, 303].includes(response.status); hop++) {
+      const location = new URL(response.headers.get('location')!, this.origin);
+      if (location.origin !== this.origin) return { response, location };
+      response = await this.request(location.href);
+    }
+    return { response, location: undefined };
+  }
+}

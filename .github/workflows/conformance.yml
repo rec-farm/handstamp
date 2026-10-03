@@ -1,0 +1,29 @@
+# OpenID conformance suite (R10): a smoke subset on every PR, the full Basic OP and Config OP
+# plans nightly and on release tags. A release needs the latest full run to be green.
+name: Conformance
+on:
+  pull_request:
+  push:
+    tags: ['v*']
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Run the suite
+        run: ./conformance/run.sh ${{ github.event_name == 'pull_request' && 'smoke' || 'full' }}
+      - name: Upload exported results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-results
+          path: conformance/results/export
+      - if: always()
+        run: ./conformance/run.sh down

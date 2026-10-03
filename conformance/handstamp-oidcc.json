@@ -1,0 +1,239 @@
+{
+  "alias": "handstamp",
+  "description": "Handstamp (local conformance run)",
+  "server": {
+    "discoveryUrl": "https://handstamp.test/.well-known/openid-configuration"
+  },
+  "client": {
+    "client_id": "conformance-1",
+    "client_secret": "conformance-client-one-secret-0123456789"
+  },
+  "client2": {
+    "client_id": "conformance-2",
+    "client_secret": "conformance-client-two-secret-0123456789"
+  },
+  "consent": {},
+  "browser": [
+    {
+      "match": "https://handstamp.test/auth*",
+      "tasks": [
+        {
+          "task": "Login",
+          "optional": true,
+          "match": "https://handstamp.test/interaction*",
+          "commands": [["click", "id", "hs-continue"]]
+        },
+        {
+          "task": "Consent",
+          "optional": true,
+          "match": "https://handstamp.test/interaction*",
+          "commands": [["click", "id", "hs-continue"]]
+        },
+        {
+          "task": "Verify Complete",
+          "match": "*/test/*/callback*",
+          "commands": [["wait", "id", "submission_complete", 10]]
+        }
+      ]
+    },
+    {
+      "match": "https://handstamp.test/session/end*",
+      "tasks": [
+        {
+          "task": "Confirm sign-out",
+          "match": "https://handstamp.test/session/end*",
+          "commands": [["click", "id", "hs-logout"]]
+        },
+        {
+          "task": "Wait for redirect back",
+          "optional": true,
+          "match": "https://handstamp.test/session/end/confirm",
+          "commands": [["wait", "contains", "/test/*/post", 10]]
+        },
+        {
+          "task": "Verify Complete",
+          "match": "*/test/*/post*"
+        }
+      ]
+    }
+  ],
+  "override": {
+    "oidcc-prompt-login": {
+      "browser": [
+        {
+          "match": "https://handstamp.test/auth*",
+          "tasks": [
+            {
+              "task": "Login",
+              "optional": true,
+              "match": "https://handstamp.test/interaction*",
+              "commands": [
+                ["wait", "xpath", "//*", 10, "Sign in", "update-image-placeholder-optional"],
+                ["click", "id", "hs-continue"]
+              ]
+            },
+            {
+              "task": "Consent",
+              "optional": true,
+              "match": "https://handstamp.test/interaction*",
+              "commands": [["click", "id", "hs-continue"]]
+            },
+            {
+              "task": "Verify Complete",
+              "match": "*/test/*/callback*",
+              "commands": [["wait", "id", "submission_complete", 10]]
+            }
+          ]
+        }
+      ]
+    },
+    "oidcc-max-age-1": {
+      "browser": [
+        {
+          "match": "https://handstamp.test/auth*",
+          "tasks": [
+            {
+              "task": "Login",
+              "optional": true,
+              "match": "https://handstamp.test/interaction*",
+              "commands": [
+                ["wait", "xpath", "//*", 10, "Sign in", "update-image-placeholder-optional"],
+                ["click", "id", "hs-continue"]
+              ]
+            },
+            {
+              "task": "Consent",
+              "optional": true,
+              "match": "https://handstamp.test/interaction*",
+              "commands": [["click", "id", "hs-continue"]]
+            },
+            {
+              "task": "Verify Complete",
+              "match": "*/test/*/callback*",
+              "commands": [["wait", "id", "submission_complete", 10]]
+            }
+          ]
+        }
+      ]
+    },
+    "oidcc-ensure-registered-redirect-uri": {
+      "browser": [
+        {
+          "match": "https://handstamp.test/auth*",
+          "tasks": [
+            {
+              "task": "Expect an error page",
+              "match": "https://handstamp.test/auth*",
+              "commands": [
+                [
+                  "wait",
+                  "xpath",
+                  "//*",
+                  10,
+                  "Handstamp could not complete this request",
+                  "update-image-placeholder"
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "oidcc-ensure-redirect-uri-in-authorization-request": {
+      "browser": [
+        {
+          "match": "https://handstamp.test/auth*",
+          "tasks": [
+            {
+              "task": "Expect an error page",
+              "match": "https://handstamp.test/auth*",
+              "commands": [
+                [
+                  "wait",
+                  "xpath",
+                  "//*",
+                  10,
+                  "Handstamp could not complete this request",
+                  "update-image-placeholder"
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "oidcc-redirect-uri-query-added": {
+      "browser": [
+        {
+          "match": "https://handstamp.test/auth*",
+          "tasks": [
+            {
+              "task": "Expect an error page",
+              "match": "https://handstamp.test/auth*",
+              "commands": [
+                [
+                  "wait",
+                  "xpath",
+                  "//*",
+                  10,
+                  "Handstamp could not complete this request",
+                  "update-image-placeholder"
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "oidcc-redirect-uri-query-mismatch": {
+      "browser": [
+        {
+          "match": "https://handstamp.test/auth*",
+          "tasks": [
+            {
+              "task": "Expect an error page",
+              "match": "https://handstamp.test/auth*",
+              "commands": [
+                [
+                  "wait",
+                  "xpath",
+                  "//*",
+                  10,
+                  "Handstamp could not complete this request",
+                  "update-image-placeholder"
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "oidcc-ensure-request-object-with-redirect-uri": {
+      "browser": [
+        {
+          "match": "https://handstamp.test/auth*",
+          "tasks": [
+            {
+              "task": "Expect an error page",
+              "match": "https://handstamp.test/auth*",
+              "commands": [
+                [
+                  "wait",
+                  "xpath",
+                  "//*",
+                  10,
+                  "Handstamp could not complete this request",
+                  "update-image-placeholder"
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "client_secret_post": {
+    "client_id": "conformance-post",
+    "client_secret": "conformance-client-post-secret-012345678"
+  }
+}

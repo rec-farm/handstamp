@@ -1,0 +1,44 @@
+# Handstamp and its Postgres. See docs/DEPLOYING.md.
+#
+#   docker compose up -d           run Handstamp (needs a .env, see .env.example)
+#   docker compose up db           just the database, for local development
+#
+# Handstamp listens on 127.0.0.1:${HANDSTAMP_PORT:-3000}. Put your TLS reverse proxy in front of it
+# and set HANDSTAMP_ISSUER to the public https:// origin and TRUST_PROXY to the proxy hop count.
+services:
+  handstamp:
+    build: .
+    image: handstamp:local
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://handstamp:${POSTGRES_PASSWORD:-handstamp}@db:5432/handstamp
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: '3000'
+    ports:
+      - '127.0.0.1:${HANDSTAMP_PORT:-3000}:3000'
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: handstamp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-handstamp}
+      POSTGRES_DB: handstamp
+    ports:
+      # For local development only; the app reaches it on the compose network.
+      - '127.0.0.1:5438:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U handstamp']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

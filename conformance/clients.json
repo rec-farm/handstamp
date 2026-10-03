@@ -1,0 +1,41 @@
+{
+  "clients": [
+    {
+      "clientId": "conformance-1",
+      "name": "Conformance client 1",
+      "redirectUris": ["https://localhost.emobix.co.uk:8443/test/a/handstamp/callback"],
+      "postLogoutRedirectUris": [
+        "https://localhost.emobix.co.uk:8443/test/a/handstamp/post_logout_redirect"
+      ],
+      "scopes": ["openid", "profile", "email", "groups", "offline_access"],
+      "firstParty": true,
+      "requirePkce": false,
+      "secretEnv": "CONFORMANCE_1_SECRET"
+    },
+    {
+      "clientId": "conformance-2",
+      "name": "Conformance client 2",
+      "redirectUris": ["https://localhost.emobix.co.uk:8443/test/a/handstamp/callback"],
+      "postLogoutRedirectUris": [
+        "https://localhost.emobix.co.uk:8443/test/a/handstamp/post_logout_redirect"
+      ],
+      "scopes": ["openid", "profile", "email", "groups", "offline_access"],
+      "firstParty": true,
+      "requirePkce": false,
+      "secretEnv": "CONFORMANCE_2_SECRET"
+    },
+    {
+      "clientId": "conformance-post",
+      "name": "Conformance client (client_secret_post)",
+      "redirectUris": ["https://localhost.emobix.co.uk:8443/test/a/handstamp/callback"],
+      "postLogoutRedirectUris": [
+        "https://localhost.emobix.co.uk:8443/test/a/handstamp/post_logout_redirect"
+      ],
+      "scopes": ["openid", "profile", "email", "groups", "offline_access"],
+      "firstParty": true,
+      "requirePkce": false,
+      "secretEnv": "CONFORMANCE_POST_SECRET",
+      "tokenEndpointAuthMethod": "client_secret_post"
+    }
+  ]
+}

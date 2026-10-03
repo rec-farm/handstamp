@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+  - packages/*
+  - examples/*
+allowBuilds:
+  esbuild: true
+minimumReleaseAgeExclude:
+  - pino@10.4.0
+  - lucide-react@1.50.0

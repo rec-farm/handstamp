@@ -1,0 +1,21 @@
+{
+  "clients": [
+    {
+      "clientId": "paramtune",
+      "name": "Paramtune",
+      "redirectUris": ["https://paramtune.example.com/api/auth/oauth2/callback/oidc"],
+      "postLogoutRedirectUris": ["https://paramtune.example.com/"],
+      "scopes": ["openid", "profile", "email", "groups"],
+      "firstParty": true,
+      "secretEnv": "PARAMTUNE_OIDC_CLIENT_SECRET"
+    },
+    {
+      "clientId": "local-rp",
+      "name": "Local Test App",
+      "redirectUris": ["http://localhost:4000/callback"],
+      "postLogoutRedirectUris": ["http://localhost:4000/"],
+      "scopes": ["openid", "profile", "email", "groups", "offline_access"],
+      "secretEnv": "LOCAL_RP_CLIENT_SECRET"
+    }
+  ]
+}
