@@ -4,14 +4,17 @@ import { clientDefinitionSchema, redirectUriProblem, toProviderMetadata } from '
 const base = { clientId: 'paramtune', name: 'Paramtune', redirectUris: ['https://p.example/cb'] };
 
 describe('redirectUriProblem', () => {
-  it.each(['https://p.example/cb', 'http://localhost:3000/cb', 'http://127.0.0.1/cb'])(
-    'accepts %s',
-    (uri) => expect(redirectUriProblem(uri)).toBeUndefined(),
-  );
+  it.each([
+    'https://p.example/cb',
+    'http://localhost:3000/cb',
+    'http://127.0.0.1/cb',
+    'http://rec-draw.localhost:1355/cb',
+  ])('accepts %s', (uri) => expect(redirectUriProblem(uri)).toBeUndefined());
 
   it.each([
     ['https://*.p.example/cb', /Wildcards/],
     ['http://p.example/cb', /https/],
+    ['http://localhost.p.example/cb', /https/],
     ['https://p.example/cb#x', /fragment/],
     ['https://user:pw@p.example/cb', /credentials/],
     ['/relative', /absolute/],

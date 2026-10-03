@@ -17,18 +17,18 @@ example app.
 
 In Handstamp, **Admin → Apps → Add an app**:
 
-| Field                     | Example                                                    | Notes                                                                                                           |
-| ------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Name                      | `Paramtune`                                                | Shown on the sign-in card.                                                                                      |
-| Client ID                 | `paramtune`                                                | Lowercase, stable. It goes into the app's settings.                                                             |
-| Redirect URIs             | `https://paramtune.rec.farm/api/auth/oauth2/callback/oidc` | Matched exactly: no wildcards, no prefixes. `https://` only, except `http://localhost`.                         |
-| Post-logout redirect URIs | `https://paramtune.rec.farm/`                              | Where Handstamp may send people after signing out.                                                              |
-| Scopes it may ask for     | `openid profile email groups`                              | Add `offline_access` only if the app needs refresh tokens.                                                      |
-| Client type               | Server app, secret in the header                           | `client_secret_basic`, the default. "Public app" is for SPAs and native apps with no backend; it requires PKCE. |
-| Who may sign in           | Only members of Paramtune users                            | Optional. Anyone else is turned away at Handstamp with a clear message and never reaches the app.               |
-| One of your own apps      | on                                                         | Skips the "Allow this app?" screen. Leave off for apps run by someone else.                                     |
-| Require PKCE              | on                                                         | Leave on.                                                                                                       |
-| Back-channel logout URI   | `https://paramtune.rec.farm/api/auth/backchannel-logout`   | Optional. See [Signing out](#signing-out).                                                                      |
+| Field                     | Example                                                    | Notes                                                                                                            |
+| ------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Name                      | `Paramtune`                                                | Shown on the sign-in card.                                                                                       |
+| Client ID                 | `paramtune`                                                | Lowercase, stable. It goes into the app's settings.                                                              |
+| Redirect URIs             | `https://paramtune.rec.farm/api/auth/oauth2/callback/oidc` | Matched exactly: no wildcards, no prefixes. `https://` only, except `http://localhost` and `http://*.localhost`. |
+| Post-logout redirect URIs | `https://paramtune.rec.farm/`                              | Where Handstamp may send people after signing out.                                                               |
+| Scopes it may ask for     | `openid profile email groups`                              | Add `offline_access` only if the app needs refresh tokens.                                                       |
+| Client type               | Server app, secret in the header                           | `client_secret_basic`, the default. "Public app" is for SPAs and native apps with no backend; it requires PKCE.  |
+| Who may sign in           | Only members of Paramtune users                            | Optional. Anyone else is turned away at Handstamp with a clear message and never reaches the app.                |
+| One of your own apps      | on                                                         | Skips the "Allow this app?" screen. Leave off for apps run by someone else.                                      |
+| Require PKCE              | on                                                         | Leave on.                                                                                                        |
+| Back-channel logout URI   | `https://paramtune.rec.farm/api/auth/backchannel-logout`   | Optional. See [Signing out](#signing-out).                                                                       |
 
 The client secret is shown **once**, together with a ready-to-paste block of settings. Copy it
 then; Handstamp only stores it encrypted and can't show it again. Lost it? **Rotate secret** on

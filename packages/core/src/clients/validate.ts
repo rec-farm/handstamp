@@ -12,6 +12,13 @@ export const TOKEN_ENDPOINT_AUTH_METHODS = [
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
+// `*.localhost` is loopback too (RFC 6761 §6.3), so local dev servers can keep named URLs.
+// Chrome and Firefox resolve it to 127.0.0.1 without asking DNS; Safari defers to the OS
+// resolver, which should but may not. Fine for development; production apps use https.
+function isLoopback(hostname: string): boolean {
+  return LOOPBACK_HOSTS.has(hostname) || hostname.endsWith('.localhost');
+}
+
 // Exact-match redirect URIs only: absolute https URLs (http only on loopback, RFC 8252),
 // no wildcards, no fragments, no embedded credentials.
 export function redirectUriProblem(value: string): string | undefined {
@@ -22,8 +29,8 @@ export function redirectUriProblem(value: string): string | undefined {
   } catch {
     return 'Use an absolute URL, such as https://app.example.com/callback.';
   }
-  if (url.protocol === 'http:' && !LOOPBACK_HOSTS.has(url.hostname))
-    return 'Use https://. Plain http:// is only allowed for localhost.';
+  if (url.protocol === 'http:' && !isLoopback(url.hostname))
+    return 'Use https://. Plain http:// is only allowed for localhost and *.localhost.';
   if (url.protocol !== 'https:' && url.protocol !== 'http:')
     return 'Only https:// URLs are supported.';
   if (url.hash) return 'Remove the #fragment. Redirect URIs cannot have one.';
