@@ -17,6 +17,10 @@ services:
       PORT: '3000'
     ports:
       - '127.0.0.1:${HANDSTAMP_PORT:-3000}:3000'
+    # Read-only config such as a clients file (HANDSTAMP_CLIENTS_FILE=/config/clients.json).
+    # Dokploy file mounts land in ../files, so set HANDSTAMP_CONFIG_DIR=../files there.
+    volumes:
+      - '${HANDSTAMP_CONFIG_DIR:-./config}:/config:ro'
     depends_on:
       db:
         condition: service_healthy

@@ -212,16 +212,17 @@ Docker network and you register internal URLs (`http://paramtune:3000/…`), set
 
 **Clients as code.** Apps can be declared in a JSON file instead of the admin UI
 (`HANDSTAMP_CLIENTS_FILE`, see [`examples/clients.json`](../examples/clients.json)). Each entry
-names the environment variable holding its secret; secrets never go in the file. Mount it into
-the container and use an absolute path:
+names the environment variable holding its secret; secrets never go in the file. `compose.yaml`
+mounts `./config` read-only at `/config`, so put the file there and set:
 
-```yaml
-# compose.override.yaml
-services:
-  handstamp:
-    volumes: ['./clients.json:/config/clients.json:ro']
-    environment: { HANDSTAMP_CLIENTS_FILE: /config/clients.json }
+```sh
+HANDSTAMP_CLIENTS_FILE=/config/clients.json
+PARAMTUNE_OIDC_CLIENT_SECRET=…          # whatever each entry's secretEnv names, 32+ characters
 ```
+
+In Dokploy, add the file under the service's **Advanced → Mounts** as a file mount named
+`clients.json` and set `HANDSTAMP_CONFIG_DIR=../files`, which is where Dokploy writes file mounts
+for a Compose service. Redeploy after changing the file: it is synced at startup.
 
 Those apps show up read-only in the admin UI.
 

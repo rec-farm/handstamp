@@ -7,3 +7,7 @@ dist/
 coverage/
 conformance/results/
 .DS_Store
+
+# Local declared clients (compose mounts ./config at /config)
+/config/*
+!/config/README.md
