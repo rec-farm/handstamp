@@ -179,8 +179,9 @@ export async function consoleRoutes(app: FastifyInstance, deps: ConsoleDeps) {
         deps.rp,
         {
           handle,
-          name: user.email ?? user.preferredUsername ?? user.displayName,
           displayName: user.displayName,
+          email: user.email,
+          username: user.preferredUsername,
         },
         existing,
       );

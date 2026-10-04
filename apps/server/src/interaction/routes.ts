@@ -9,6 +9,7 @@ import {
   verifyAuthentication,
   verifyRegistration,
   type AuthenticationResponseJSON,
+  type PasskeyUser,
   type RegistrationResponseJSON,
   type RelyingParty,
 } from '@handstamp/core';
@@ -438,7 +439,7 @@ export async function interactionRoutes(app: FastifyInstance, deps: InteractionD
       const handle = deps.setup.newUserHandle();
       const options = await registrationOptions(
         deps.rp,
-        { handle, name: email || displayName, displayName },
+        { handle, displayName, email },
         [],
       );
       await deps.passkeys.saveChallenge(
@@ -553,7 +554,7 @@ export async function interactionRoutes(app: FastifyInstance, deps: InteractionD
     async (req, reply) => {
       guard(req);
       const { interaction, enrollment } = await requireEnrollment(req, reply);
-      let user: { handle: string; name: string; displayName: string };
+      let user: PasskeyUser;
       let existing: { credentialId: string; transports: string[] }[] = [];
       if (enrollment.purpose === 'invite') {
         const displayName = String(req.body?.displayName ?? '')
@@ -565,7 +566,7 @@ export async function interactionRoutes(app: FastifyInstance, deps: InteractionD
             'name_required',
             'Add your name so people know who you are.',
           );
-        user = { handle: deps.setup.newUserHandle(), name: displayName, displayName };
+        user = { handle: deps.setup.newUserHandle(), displayName };
       } else {
         const [row] = await deps.db.select().from(users).where(eq(users.id, enrollment.userId!));
         let handle = row.webauthnUserHandle;
@@ -576,7 +577,12 @@ export async function interactionRoutes(app: FastifyInstance, deps: InteractionD
             .set({ webauthnUserHandle: handle })
             .where(eq(users.id, row.id));
         }
-        user = { handle, name: row.email ?? row.displayName, displayName: row.displayName };
+        user = {
+          handle,
+          displayName: row.displayName,
+          email: row.email,
+          username: row.preferredUsername,
+        };
         if (!enrollment.revokeOtherMethods) existing = await deps.passkeys.listForUser(row.id);
       }
       const options = await registrationOptions(deps.rp, user, existing);

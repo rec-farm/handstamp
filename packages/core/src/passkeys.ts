@@ -36,16 +36,30 @@ export type StoredPasskey = {
   transports: string[];
 };
 
+export type PasskeyUser = {
+  handle: string;
+  displayName: string;
+  email?: string | null;
+  username?: string | null;
+};
+
+// The account label password managers show under the item title (1Password titles the item from
+// the registrable domain, so several rec.farm apps all read "Rec"). Prefer a real identifier; with
+// neither, pair the name with this instance's host so the passkey says where it signs in.
+export function passkeyUserName(rp: RelyingParty, user: Omit<PasskeyUser, 'handle'>) {
+  return user.email || user.username || `${user.displayName} (${rp.id})`;
+}
+
 export function registrationOptions(
   rp: RelyingParty,
-  user: { handle: string; name: string; displayName: string },
+  user: PasskeyUser,
   existing: { credentialId: string; transports: string[] }[],
 ) {
   return generateRegistrationOptions({
     rpName: rp.name,
     rpID: rp.id,
     userID: Buffer.from(user.handle, 'base64url'),
-    userName: user.name,
+    userName: passkeyUserName(rp, user),
     userDisplayName: user.displayName,
     attestationType: 'none',
     excludeCredentials: existing.map((p) => ({ id: p.credentialId, transports: p.transports })),
