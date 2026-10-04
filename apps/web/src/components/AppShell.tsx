@@ -11,6 +11,7 @@ import {
   Users,
   UsersRound,
 } from 'lucide-react';
+import { RecChain } from './rec-chain.tsx';
 
 type Nav = { href: string; label: string; icon: ReactNode; exact?: boolean };
 
@@ -48,10 +49,12 @@ function useActive() {
 // for the active place; below md a compact top bar and a scrollable row of links.
 export function AppShell({
   user,
+  instance,
   crumb,
   children,
 }: {
   user: { displayName: string; isAdmin?: boolean };
+  instance: { name: string; issuer: string };
   crumb: ReactNode;
   children: ReactNode;
 }) {
@@ -72,9 +75,27 @@ export function AppShell({
           />
           <span className="wordmark">Handstamp</span>
         </div>
-        <nav aria-label="Main" className="mt-2 flex-1 overflow-y-auto px-3">
+        {/* Which installation this is (§10.3 workspace card). There's only one, so no switcher. */}
+        <div className="mx-3 flex items-center gap-3 rounded-sm border border-border p-2.5 light:border-deep-700">
+          <span
+            aria-hidden
+            className="grid size-8 shrink-0 place-items-center rounded-xs bg-lilac-300 font-bold text-deep-900"
+          >
+            {instance.name.trim().charAt(0).toUpperCase() || 'H'}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-body font-semibold">{instance.name}</span>
+            <span
+              className="block truncate font-mono text-mono-sm text-sidebar-fg-muted"
+              title={instance.issuer}
+            >
+              {new URL(instance.issuer).host}
+            </span>
+          </span>
+        </div>
+        <nav aria-label="Main" className="flex-1 overflow-y-auto px-3 pb-2">
           {groups.map(([label, items]) => (
-            <div key={label} className="mt-4">
+            <div key={label} className="mt-6">
               <p className="eyebrow mb-2 px-2 text-sidebar-fg-muted">{label}</p>
               <ul className="space-y-1">
                 {items.map((item) => (
@@ -106,8 +127,12 @@ export function AppShell({
             Sign out
           </a>
           <div className="my-4 border-t border-border light:border-deep-700" />
-          <p className="px-3 text-caption text-sidebar-fg-muted">
-            <span className="label-stamp">Handstamp</span> · by R.E.C.
+          {/* Endorsed lockup (§2.5): "by" and the chain at 8px cap height, in muted. */}
+          <p className="flex items-center gap-1.5 px-3 text-caption text-sidebar-fg-muted">
+            <span className="label-stamp">Handstamp</span>
+            <span aria-hidden>·</span>
+            <span className="font-semibold">by</span>
+            <RecChain className="h-2 w-auto" />
           </p>
           <p className="mt-1 px-3 font-mono text-mono-sm text-sidebar-fg-muted">
             Handstamp v{__HANDSTAMP_VERSION__}

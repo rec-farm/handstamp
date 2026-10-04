@@ -146,6 +146,7 @@ export async function consoleRoutes(app: FastifyInstance, deps: ConsoleDeps) {
         authTime: new Date(session.authTime * 1000).toISOString(),
         recentlyAuthenticated: recentlyAuthenticated(session),
       },
+      instance: { name: deps.instanceName, issuer: deps.issuer.href },
       csrf: csrfFor(session),
     };
   });

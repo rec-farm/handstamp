@@ -15,6 +15,7 @@ type Me = {
     createdAt: string;
   };
   session: { uid: string; authTime: string; recentlyAuthenticated: boolean };
+  instance: { name: string; issuer: string };
   csrf: string;
 };
 type Passkey = {
@@ -201,7 +202,11 @@ export function Account() {
     });
 
   return (
-    <AppShell user={me.user} crumb={<span className="text-fg">Account</span>}>
+    <AppShell
+      user={me.user}
+      instance={me.instance}
+      crumb={<span className="text-fg">Account</span>}
+    >
       <header className="pt-10 pb-8 md:pt-16">
         <p className="eyebrow">Your account</p>
         <h1 className="mt-2 text-[2.5rem] leading-none font-extrabold tracking-[-0.035em] text-fg md:text-title-1">

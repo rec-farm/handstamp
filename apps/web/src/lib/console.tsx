@@ -10,6 +10,7 @@ export type Me = {
     createdAt: string;
   };
   session: { uid: string; authTime: string; recentlyAuthenticated: boolean };
+  instance: { name: string; issuer: string };
   csrf: string;
 };
 

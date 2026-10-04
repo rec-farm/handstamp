@@ -53,7 +53,7 @@ export function AdminPage({
     </>
   );
   return (
-    <AppShell user={c.me.user} crumb={crumb}>
+    <AppShell user={c.me.user} instance={c.me.instance} crumb={crumb}>
       {children(c)}
     </AppShell>
   );
