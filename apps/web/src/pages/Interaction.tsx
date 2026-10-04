@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router';
-import { FlaskConical, KeyRound } from 'lucide-react';
+import { Check, FlaskConical, KeyRound } from 'lucide-react';
 import { api, ApiError } from '../api.ts';
 import { Button, Callout, CardPage, Field, Loading, Title } from '../components/ui.tsx';
 import {
@@ -341,18 +341,26 @@ function Claim(props: {
     });
   }
 
+  const host = new URL(details.issuer).host;
+  const claiming = busy === 'claim';
+
   return (
     <CardPage footer={footer}>
       <p className="eyebrow mb-2">First-run setup</p>
       <Title>Claim this instance</Title>
+      <SetupSteps current={details.setupVerified ? 2 : 1} />
       {!details.setupVerified ? (
-        <form onSubmit={verify} className="mt-3">
+        <form onSubmit={verify} className="mt-6">
           <p className="text-body text-fg-muted">
-            Handstamp printed a one-time setup code in its server logs. Enter it to become the first
-            admin.
+            Handstamp printed a one-time setup code in its server logs when it started. Enter it to
+            become the first admin of <span className="font-mono text-mono text-fg">{host}</span>.
           </p>
           <div className="mt-6">
-            <Field label="Setup code" required>
+            <Field
+              label="Setup code"
+              required
+              hint="Each server start prints a new one. Use the latest."
+            >
               {(id) => (
                 <input
                   id={id}
@@ -376,16 +384,21 @@ function Claim(props: {
               busy={busy === 'verify'}
               disabled={!code.trim()}
             >
-              Continue
+              {busy === 'verify' ? 'Checking code…' : 'Check code'}
             </Button>
           </div>
         </form>
       ) : (
-        <form onSubmit={claim} className="mt-3">
-          <p className="text-body text-fg-muted">
-            Code accepted. Tell us who you are, then create the passkey you'll sign in with.
+        <form onSubmit={claim} className="mt-6">
+          <p className="flex items-center gap-2 text-body text-success-text">
+            <Check className="size-4 shrink-0 text-success-icon" aria-hidden />
+            Code accepted. One step to go.
           </p>
-          <div className="mt-6 space-y-6">
+          <p className="mt-2 text-body text-fg-muted">
+            Tell us who you are, then create the passkey you'll sign in with. It stays on this
+            device, or syncs with your password manager.
+          </p>
+          <fieldset disabled={claiming} className="mt-6 space-y-6">
             <Field label="Your name" required>
               {(id) => (
                 <input
@@ -411,22 +424,61 @@ function Claim(props: {
                 />
               )}
             </Field>
-          </div>
+          </fieldset>
           {error}
           <div className="mt-6">
             <Button
               type="submit"
               variant="primary"
               icon={<KeyRound className="size-[18px]" aria-hidden />}
-              busy={busy === 'claim'}
+              busy={claiming}
               disabled={!name.trim()}
             >
-              Create passkey and finish
+              {claiming ? 'Waiting for your passkey…' : 'Create passkey and finish'}
             </Button>
           </div>
+          <p className="mt-3 text-body-sm text-fg-muted">
+            You'll be signed in as soon as it's saved, with admin tools in the sidebar.
+          </p>
         </form>
       )}
     </CardPage>
+  );
+}
+
+const SETUP_STEPS = ['Setup code', 'Your passkey'];
+
+// Two-segment progress bar for first-run setup (DESIGN §10.19): done, current, upcoming.
+function SetupSteps({ current }: { current: number }) {
+  return (
+    <ol className="mt-5 grid grid-cols-2 gap-2" aria-label="Setup progress">
+      {SETUP_STEPS.map((label, index) => {
+        const step = index + 1;
+        const done = step < current;
+        const active = step === current;
+        return (
+          <li key={label} aria-current={active ? 'step' : undefined}>
+            <span
+              aria-hidden
+              className={`block h-1.5 ${done || active ? 'bg-primary' : 'bg-surface-3'}`}
+            />
+            <span
+              className={`mt-2 flex items-center gap-1.5 text-caption ${
+                active ? 'text-fg' : done ? 'text-fg-muted' : 'text-fg-subtle'
+              }`}
+            >
+              {done ? (
+                <Check className="size-3.5 text-success-icon" aria-hidden />
+              ) : (
+                <span className="font-mono tabular-nums">{step}</span>
+              )}
+              {label}
+              {done && <span className="sr-only">(done)</span>}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 

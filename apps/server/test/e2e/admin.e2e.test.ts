@@ -50,7 +50,7 @@ it('runs the instance from the admin console', async () => {
   const code = (await server.setup.issueCode())!;
   await page.goto(server.issuer);
   await page.getByLabel('Setup code').fill(code);
-  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Check code' }).click();
   await page.getByLabel('Your name').fill('Admin');
   await page.getByRole('button', { name: 'Create passkey and finish' }).click();
   await page.waitForURL('**/account');
