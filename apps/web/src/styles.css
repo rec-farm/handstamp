@@ -1,6 +1,7 @@
 /*
- * REC design system tokens: copied verbatim from rec-brand DESIGN.md §14, brand v1.3.0
- * (tag v1.3.0, RodrigoEspinosa/rec-brand). Do not edit this block; update it from a newer tag.
+ * REC design system tokens: copied verbatim from rec-brand DESIGN.md §14, brand v1.6.0
+ * (§14 is unchanged since tag v1.5.0, RodrigoEspinosa/rec-brand). Do not edit this block;
+ * update it from a newer tag. Handstamp's Lilac accent is part of it since v1.5.0.
  * Handstamp's own additions live after the "Handstamp" marker at the end of the file.
  */
 
@@ -87,6 +88,11 @@
   --color-lilac-400: #b3a8ee;
   --color-lilac-600: #5b4fa8;
   --color-lilac-950: #1a1828;
+  --color-sky-100: #e2f0fa;
+  --color-sky-300: #b4daf2;
+  --color-sky-400: #5db4ea;
+  --color-sky-600: #1e5f8c;
+  --color-sky-950: #0e1c25;
 
   /* Fonts */
   --font-display: 'Archivo', 'Arial Black', system-ui, sans-serif;
@@ -242,7 +248,7 @@
   --info-text: var(--color-lilac-400);
   --tile-fg: var(--color-cream);
   --tile-fg-muted: var(--color-stone-400);
-  --danger-solid: #d93f5e;
+  --danger-solid: #d23758;
 
   --overlay: rgb(10 11 12 / 0.72);
   --shadow-pop-value: 0 12px 32px -8px rgb(0 0 0 / 0.45);
@@ -334,6 +340,34 @@
   --accent-fg: var(--color-deep-900);
   --accent-tile: var(--color-mint-100);
   --accent-text: var(--color-mint-600);
+}
+
+[data-product='handstamp'] {
+  --accent: var(--color-lilac-400);
+  --accent-fg: var(--color-ink-950);
+  --accent-tile: var(--color-lilac-950);
+  --accent-text: var(--color-lilac-400);
+}
+[data-theme='light'][data-product='handstamp'],
+[data-theme='light'] [data-product='handstamp'] {
+  --accent: var(--color-lilac-300);
+  --accent-fg: var(--color-deep-900);
+  --accent-tile: var(--color-lilac-100);
+  --accent-text: var(--color-lilac-600);
+}
+
+[data-product='draw'] {
+  --accent: var(--color-sky-400);
+  --accent-fg: var(--color-ink-950);
+  --accent-tile: var(--color-sky-950);
+  --accent-text: var(--color-sky-400);
+}
+[data-theme='light'][data-product='draw'],
+[data-theme='light'] [data-product='draw'] {
+  --accent: var(--color-sky-300);
+  --accent-fg: var(--color-deep-900);
+  --accent-tile: var(--color-sky-100);
+  --accent-text: var(--color-sky-600);
 }
 
 /* ───────────────────────── 4. Semantic utilities ───────────────────────── */
@@ -486,23 +520,6 @@
     'Figtree Variable', 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono:
     'Geist Mono Variable', 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-}
-
-/* Signature accent: Lilac. Marks place and product identity only, never actions.
-   Contrast (WCAG): ink-950 on lilac-400 9.15 · deep-900 on lilac-300 11.14 ·
-   lilac-600 on paper-100 5.96 · lilac-400 on ink-900 8.72. Upstream to rec-brand §3.4/§14. */
-[data-product='handstamp'] {
-  --accent: var(--color-lilac-400);
-  --accent-fg: var(--color-ink-950);
-  --accent-tile: var(--color-lilac-950);
-  --accent-text: var(--color-lilac-400);
-}
-[data-theme='light'][data-product='handstamp'],
-[data-theme='light'] [data-product='handstamp'] {
-  --accent: var(--color-lilac-300);
-  --accent-fg: var(--color-deep-900);
-  --accent-tile: var(--color-lilac-100);
-  --accent-text: var(--color-lilac-600);
 }
 
 @layer base {
