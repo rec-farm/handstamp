@@ -1,5 +1,5 @@
-import { useId, type ButtonHTMLAttributes, type ReactNode } from 'react';
-import { CircleAlert, LoaderCircle, TriangleAlert } from 'lucide-react';
+import { useId, type ButtonHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
+import { ChevronDown, CircleAlert, LoaderCircle, TriangleAlert } from 'lucide-react';
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -152,9 +152,85 @@ export function Tag({
   };
   return (
     <span
-      className={`inline-flex h-[22px] items-center rounded-xs px-1.5 font-mono text-mono-sm ${tones[tone]}`}
+      className={`inline-flex h-[22px] items-center gap-1.5 rounded-xs px-1.5 font-mono text-mono-sm ${tones[tone]}`}
     >
       {children}
     </span>
+  );
+}
+
+// Native select in the input shell, with the trailing chevron-down (DESIGN §10.2).
+export function Select({
+  className = '',
+  children,
+  ...rest
+}: SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <div className="relative">
+      <select {...rest} className={`input appearance-none pr-10 ${className}`}>
+        {children}
+      </select>
+      <ChevronDown
+        className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-fg-subtle"
+        aria-hidden
+      />
+    </div>
+  );
+}
+
+export type Choice<T extends string> = {
+  value: T;
+  label: string;
+  hint: string;
+  icon: ReactNode;
+};
+
+// A picker of cards for a few options worth explaining. The selected card is the one place a
+// card gets the offset shadow (DESIGN §6.3, §10.7).
+export function Choices<T extends string>({
+  label,
+  hint,
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: T;
+  options: Choice<T>[];
+  disabled?: boolean;
+  onChange: (value: T) => void;
+}) {
+  const name = useId();
+  return (
+    <fieldset disabled={disabled}>
+      <legend className="label-stamp text-fg">{label}</legend>
+      <p className="mt-1 text-body-sm text-fg-muted">{hint}</p>
+      <div className="mt-2 grid gap-3 sm:grid-cols-3">
+        {options.map((o) => (
+          <label
+            key={o.value}
+            className="flex cursor-pointer gap-3 rounded-sm border border-border-input bg-surface-2 p-3 transition-colors duration-150 hover:border-border-strong has-checked:border-primary has-checked:shadow-hard-sm has-focus-visible:ring-3 has-focus-visible:ring-primary/25 has-disabled:cursor-not-allowed has-disabled:not-has-checked:opacity-40 has-disabled:hover:border-border-input light:bg-surface-1"
+          >
+            <input
+              type="radio"
+              name={name}
+              value={o.value}
+              checked={value === o.value}
+              onChange={() => onChange(o.value)}
+              className="sr-only"
+            />
+            <span className="mt-0.5 shrink-0 text-fg-muted [label:has(:checked)_&]:text-fg">
+              {o.icon}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-body font-semibold text-fg">{o.label}</span>
+              <span className="mt-0.5 block text-body-sm text-fg-muted">{o.hint}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }

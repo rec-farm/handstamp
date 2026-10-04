@@ -11,7 +11,7 @@ import {
   Table,
   When,
 } from '../../components/admin.tsx';
-import { Button, Field } from '../../components/ui.tsx';
+import { Button, Field, Select } from '../../components/ui.tsx';
 import { AdminPage, type Console } from './AdminPage.tsx';
 
 type Entry = {
@@ -112,9 +112,8 @@ function AuditBody({ c }: { c: Console }) {
         >
           <Field label="What">
             {(id) => (
-              <select
+              <Select
                 id={id}
-                className="input"
                 value={filters.action}
                 onChange={(e) => setFilters({ ...filters, action: e.target.value })}
               >
@@ -123,7 +122,7 @@ function AuditBody({ c }: { c: Console }) {
                     {label}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </Field>
           <Field label="About" hint="A user sub, client ID or key ID.">

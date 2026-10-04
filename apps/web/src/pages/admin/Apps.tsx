@@ -15,7 +15,7 @@ import {
   Table,
   When,
 } from '../../components/admin.tsx';
-import { Button, Callout, Field, Tag } from '../../components/ui.tsx';
+import { Button, Callout, Field, Select, Tag } from '../../components/ui.tsx';
 import { useResource } from '../../lib/console.tsx';
 import { AdminPage, type Console } from './AdminPage.tsx';
 
@@ -234,9 +234,8 @@ function AppForm({
         <div className="grid gap-6 sm:grid-cols-2">
           <Field label="Client type">
             {(id) => (
-              <select
+              <Select
                 id={id}
-                className="input"
                 value={v.tokenEndpointAuthMethod}
                 onChange={(e) =>
                   set({
@@ -250,14 +249,13 @@ function AppForm({
                 </option>
                 <option value="client_secret_post">Server app, secret in the body</option>
                 <option value="none">Public app, no secret (PKCE only)</option>
-              </select>
+              </Select>
             )}
           </Field>
           <Field label="Who may sign in">
             {(id) => (
-              <select
+              <Select
                 id={id}
-                className="input"
                 value={v.requiredGroup ?? ''}
                 onChange={(e) => set({ requiredGroup: e.target.value || undefined })}
               >
@@ -267,7 +265,7 @@ function AppForm({
                     Only members of {g.name} ({g.slug})
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </Field>
         </div>
