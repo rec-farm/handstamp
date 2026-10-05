@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { Globe, Plus } from 'lucide-react';
 import {
   CopyButton,
@@ -9,7 +9,16 @@ import {
   Status,
 } from '../../components/admin.tsx';
 import { GitHubMark, GoogleMark } from '../../components/brand-icons.tsx';
-import { Button, Choices, Field, Tag, type Choice } from '../../components/ui.tsx';
+import {
+  Button,
+  Check,
+  Choices,
+  Field,
+  FormActions,
+  Section,
+  Tag,
+  type Choice,
+} from '../../components/ui.tsx';
 import { useResource } from '../../lib/console.tsx';
 import { AdminPage, type Console } from './AdminPage.tsx';
 
@@ -62,62 +71,6 @@ const list = (s: string) =>
     .split(',')
     .map((x) => x.trim())
     .filter(Boolean);
-
-// One block of the form: a stamp and a line of context on the left, the fields on the right
-// (DESIGN §10.7 card header, §11.3 sections with a divider).
-function Section({
-  label,
-  subtitle,
-  children,
-}: {
-  label: string;
-  subtitle: string;
-  children: ReactNode;
-}) {
-  const id = useId();
-  return (
-    <div
-      role="group"
-      aria-labelledby={id}
-      className="grid gap-x-10 gap-y-5 border-b border-border px-6 py-6 lg:grid-cols-[14rem_minmax(0,1fr)]"
-    >
-      <div>
-        <h3 id={id} className="label-stamp text-fg">
-          {label}
-        </h3>
-        <p className="mt-1 text-body-sm text-fg-muted">{subtitle}</p>
-      </div>
-      <div className="space-y-6">{children}</div>
-    </div>
-  );
-}
-
-function Check({
-  checked,
-  onChange,
-  label,
-  hint,
-}: {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  label: string;
-  hint: string;
-}) {
-  return (
-    <label className="flex items-start gap-3 text-body text-fg">
-      <input
-        type="checkbox"
-        className="mt-0.5 size-4 accent-primary"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span>
-        {label}
-        <span className="mt-0.5 block text-body-sm text-fg-muted">{hint}</span>
-      </span>
-    </label>
-  );
-}
 
 function ProviderForm({
   c,
@@ -326,14 +279,14 @@ function ProviderForm({
         )}
       </Section>
 
-      <div className="flex flex-wrap gap-3 px-6 py-5 lg:pl-[calc(14rem+4rem)]">
+      <FormActions>
         <Button type="submit" variant="primary" size="md" busy={c.busy === 'save'}>
           {isNew ? 'Add provider' : 'Save changes'}
         </Button>
         <Button type="button" variant="ghost" size="md" onClick={onCancel}>
           Cancel
         </Button>
-      </div>
+      </FormActions>
     </form>
   );
 }

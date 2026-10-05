@@ -234,3 +234,67 @@ export function Choices<T extends string>({
     </fieldset>
   );
 }
+
+// One block of a form: a stamp and a line of context on the left, the fields on the right
+// (DESIGN §10.7 card header, §11.3 sections with a divider).
+export function Section({
+  label,
+  subtitle,
+  children,
+}: {
+  label: string;
+  subtitle: string;
+  children: ReactNode;
+}) {
+  const id = useId();
+  return (
+    <div
+      role="group"
+      aria-labelledby={id}
+      className="grid gap-x-10 gap-y-5 border-b border-border px-6 py-6 lg:grid-cols-[14rem_minmax(0,1fr)]"
+    >
+      <div>
+        <h3 id={id} className="label-stamp text-fg">
+          {label}
+        </h3>
+        <p className="mt-1 text-body-sm text-fg-muted">{subtitle}</p>
+      </div>
+      <div className="space-y-6">{children}</div>
+    </div>
+  );
+}
+
+// The button row under a sectioned form, lined up with the fields column.
+export function FormActions({ children }: { children: ReactNode }) {
+  return <div className="flex flex-wrap gap-3 px-6 py-5 lg:pl-[calc(14rem+4rem)]">{children}</div>;
+}
+
+export function Check({
+  checked,
+  onChange,
+  label,
+  hint,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+  hint: string;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="flex items-start gap-3 text-body text-fg has-disabled:cursor-not-allowed">
+      <input
+        type="checkbox"
+        className="mt-0.5 size-4 accent-primary"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span>
+        {label}
+        <span className="mt-0.5 block text-body-sm text-fg-muted">{hint}</span>
+      </span>
+    </label>
+  );
+}

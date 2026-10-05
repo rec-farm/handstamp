@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Plus } from 'lucide-react';
+import { MonitorSmartphone, Plus, Server, ServerCog } from 'lucide-react';
 import {
   Cell,
   CopyButton,
@@ -15,7 +15,18 @@ import {
   Table,
   When,
 } from '../../components/admin.tsx';
-import { Button, Callout, Field, Select, Tag } from '../../components/ui.tsx';
+import {
+  Button,
+  Callout,
+  Check,
+  Choices,
+  Field,
+  FormActions,
+  Section,
+  Select,
+  Tag,
+  type Choice,
+} from '../../components/ui.tsx';
 import { useResource } from '../../lib/console.tsx';
 import { AdminPage, type Console } from './AdminPage.tsx';
 
@@ -107,6 +118,35 @@ const lines = (text: string) =>
     .map((l) => l.trim())
     .filter(Boolean);
 
+const CLIENT_TYPES: Choice<Form['tokenEndpointAuthMethod']>[] = [
+  {
+    value: 'client_secret_basic',
+    label: 'Server app',
+    hint: 'Secret in the Authorization header. Most apps.',
+    icon: <Server className="size-5" aria-hidden />,
+  },
+  {
+    value: 'client_secret_post',
+    label: 'Server app, body',
+    hint: "Secret in the request body, for libraries that can't send the header.",
+    icon: <ServerCog className="size-5" aria-hidden />,
+  },
+  {
+    value: 'none',
+    label: 'Public app',
+    hint: 'No secret. Browser and mobile apps, PKCE always on.',
+    icon: <MonitorSmartphone className="size-5" aria-hidden />,
+  },
+];
+
+const SCOPE_HINT: Record<string, string> = {
+  openid: 'Sign-in. Always on.',
+  profile: 'Name and picture.',
+  email: 'Email address.',
+  groups: 'Group slugs.',
+  offline_access: 'Refresh tokens.',
+};
+
 function AppForm({
   c,
   initial,
@@ -120,6 +160,7 @@ function AppForm({
   readOnly: boolean;
   onSaved: (secret?: string, clientId?: string) => void;
 }) {
+  const navigate = useNavigate();
   const groups = useResource<Group[]>('/api/admin/groups');
   const [v, setV] = useState(initial);
   const [uris, setUris] = useState(initial.redirectUris.join('\n'));
@@ -127,7 +168,6 @@ function AppForm({
   const set = (patch: Partial<Form>) => setV({ ...v, ...patch });
   return (
     <form
-      className="max-w-[720px] space-y-6 px-6 py-6"
       onSubmit={async (e) => {
         e.preventDefault();
         const body = {
@@ -148,111 +188,124 @@ function AppForm({
         if (result) onSaved(result.secret, v.clientId);
       }}
     >
-      <fieldset disabled={readOnly} className="space-y-6">
-        <div className="grid gap-6 sm:grid-cols-2">
-          <Field label="Name" required hint="Shown on the sign-in card.">
+      <fieldset disabled={readOnly}>
+        <Section label="App" subtitle="How people and Handstamp know it.">
+          <div className="grid gap-6 sm:grid-cols-2">
+            <Field label="Name" required hint="Shown on the sign-in card.">
+              {(id) => (
+                <input
+                  id={id}
+                  className="input"
+                  value={v.name}
+                  onChange={(e) => set({ name: e.target.value })}
+                  placeholder="Paramtune"
+                  required
+                />
+              )}
+            </Field>
+            <Field
+              label="Client ID"
+              required
+              hint={
+                isNew ? 'Lowercase, no spaces. Cannot change later.' : "Can't change once added."
+              }
+            >
+              {(id) => (
+                <input
+                  id={id}
+                  className="input font-mono"
+                  value={v.clientId}
+                  disabled={!isNew}
+                  onChange={(e) => set({ clientId: e.target.value.toLowerCase() })}
+                  placeholder="paramtune"
+                  required
+                />
+              )}
+            </Field>
+          </div>
+        </Section>
+
+        <Section label="Redirects" subtitle="Where Handstamp may send people back to.">
+          <Field
+            label="Redirect URIs"
+            required
+            hint="One per line, exact match. https:// only, except for localhost."
+          >
             {(id) => (
-              <input
+              <textarea
                 id={id}
-                className="input"
-                value={v.name}
-                onChange={(e) => set({ name: e.target.value })}
+                rows={3}
+                className="input h-auto py-2 font-mono text-mono"
+                value={uris}
+                onChange={(e) => setUris(e.target.value)}
+                placeholder="https://paramtune.example.com/api/auth/oauth2/callback/oidc"
                 required
               />
             )}
           </Field>
           <Field
-            label="Client ID"
-            required
-            hint={isNew ? 'Lowercase, no spaces. Cannot change later.' : undefined}
+            label="Post-logout redirect URIs"
+            hint="Where people may land after signing out. One per line."
+          >
+            {(id) => (
+              <textarea
+                id={id}
+                rows={2}
+                className="input h-auto py-2 font-mono text-mono"
+                value={logoutUris}
+                onChange={(e) => setLogoutUris(e.target.value)}
+                placeholder="https://paramtune.example.com/"
+              />
+            )}
+          </Field>
+          <Field
+            label="Back-channel logout URI"
+            hint="Optional. Handstamp tells the app here when someone signs out."
           >
             {(id) => (
               <input
                 id={id}
                 className="input font-mono"
-                value={v.clientId}
-                disabled={!isNew}
-                onChange={(e) => set({ clientId: e.target.value.toLowerCase() })}
-                placeholder="paramtune"
-                required
+                value={v.backchannelLogoutUri ?? ''}
+                onChange={(e) => set({ backchannelLogoutUri: e.target.value })}
+                placeholder="https://paramtune.example.com/api/auth/backchannel-logout"
               />
             )}
           </Field>
-        </div>
-        <Field
-          label="Redirect URIs"
-          required
-          hint="One per line, exact match. https:// only, except for localhost."
-        >
-          {(id) => (
-            <textarea
-              id={id}
-              rows={3}
-              className="input h-auto py-2 font-mono text-mono"
-              value={uris}
-              onChange={(e) => setUris(e.target.value)}
-              placeholder="https://paramtune.example.com/api/auth/oauth2/callback/oidc"
-              required
-            />
-          )}
-        </Field>
-        <Field
-          label="Post-logout redirect URIs"
-          hint="Where people may land after signing out. One per line."
-        >
-          {(id) => (
-            <textarea
-              id={id}
-              rows={2}
-              className="input h-auto py-2 font-mono text-mono"
-              value={logoutUris}
-              onChange={(e) => setLogoutUris(e.target.value)}
-            />
-          )}
-        </Field>
-        <fieldset>
-          <legend className="label-stamp text-fg">Scopes it may ask for</legend>
-          <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
-            {SCOPES.map((s) => (
-              <label key={s} className="flex items-center gap-2 text-body text-fg">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-primary"
-                  checked={v.scopes.includes(s)}
-                  disabled={s === 'openid'}
-                  onChange={(e) =>
-                    set({
-                      scopes: e.target.checked ? [...v.scopes, s] : v.scopes.filter((x) => x !== s),
-                    })
-                  }
-                />
-                <code className="font-mono text-mono">{s}</code>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-        <div className="grid gap-6 sm:grid-cols-2">
-          <Field label="Client type">
-            {(id) => (
-              <Select
-                id={id}
-                value={v.tokenEndpointAuthMethod}
-                onChange={(e) =>
-                  set({
-                    tokenEndpointAuthMethod: e.target.value as Form['tokenEndpointAuthMethod'],
-                    requirePkce: e.target.value === 'none' ? true : v.requirePkce,
-                  })
-                }
-              >
-                <option value="client_secret_basic">
-                  Server app, secret in the header (most apps)
-                </option>
-                <option value="client_secret_post">Server app, secret in the body</option>
-                <option value="none">Public app, no secret (PKCE only)</option>
-              </Select>
-            )}
-          </Field>
-          <Field label="Who may sign in">
+        </Section>
+
+        <Section label="Access" subtitle="What it may ask for and who gets in.">
+          <fieldset>
+            <legend className="label-stamp text-fg">Scopes</legend>
+            <p className="mt-1 text-body-sm text-fg-muted">What the app may ask to see.</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {SCOPES.map((s) => (
+                <label
+                  key={s}
+                  className="flex cursor-pointer items-start gap-3 rounded-sm border border-border-input bg-surface-2 px-3 py-2.5 transition-colors duration-150 hover:border-border-strong has-checked:border-primary has-checked:bg-primary-soft has-focus-visible:ring-3 has-focus-visible:ring-primary/25 has-disabled:cursor-not-allowed has-disabled:hover:border-border-input light:bg-surface-1 light:has-checked:bg-primary-soft"
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 size-4 accent-primary"
+                    checked={v.scopes.includes(s)}
+                    disabled={s === 'openid'}
+                    onChange={(e) =>
+                      set({
+                        scopes: e.target.checked
+                          ? [...v.scopes, s]
+                          : v.scopes.filter((x) => x !== s),
+                      })
+                    }
+                  />
+                  <span className="min-w-0">
+                    <code className="block font-mono text-mono text-fg">{s}</code>
+                    <span className="block text-body-sm text-fg-muted">{SCOPE_HINT[s]}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <Field label="Who may sign in" hint="Limit the app to one group. Others are turned away.">
             {(id) => (
               <Select
                 id={id}
@@ -268,56 +321,49 @@ function AppForm({
               </Select>
             )}
           </Field>
-        </div>
-        <div className="space-y-3">
-          <label className="flex items-start gap-3 text-body text-fg">
-            <input
-              type="checkbox"
-              className="mt-0.5 size-4 accent-primary"
-              checked={v.firstParty}
-              onChange={(e) => set({ firstParty: e.target.checked })}
-            />
-            <span>
-              One of your own apps
-              <span className="block text-body-sm text-fg-muted">
-                Skips the “Allow this app?” screen.
-              </span>
-            </span>
-          </label>
-          <label className="flex items-start gap-3 text-body text-fg">
-            <input
-              type="checkbox"
-              className="mt-0.5 size-4 accent-primary"
-              checked={v.requirePkce}
-              disabled={v.tokenEndpointAuthMethod === 'none'}
-              onChange={(e) => set({ requirePkce: e.target.checked })}
-            />
-            <span>
-              Require PKCE
-              <span className="block text-body-sm text-fg-muted">
-                Leave on. Turn off only for a client that truly can't send it.
-              </span>
-            </span>
-          </label>
-        </div>
-        <Field
-          label="Back-channel logout URI"
-          hint="Optional. Handstamp tells the app here when someone signs out."
-        >
-          {(id) => (
-            <input
-              id={id}
-              className="input font-mono"
-              value={v.backchannelLogoutUri ?? ''}
-              onChange={(e) => set({ backchannelLogoutUri: e.target.value })}
-            />
-          )}
-        </Field>
+          <Check
+            checked={v.firstParty}
+            onChange={(firstParty) => set({ firstParty })}
+            label="One of your own apps"
+            hint="Skips the “Allow this app?” screen."
+          />
+        </Section>
+
+        <Section label="Security" subtitle="How the app proves who it is.">
+          <Choices
+            label="Client type"
+            hint="Where the app runs decides whether it can keep a secret."
+            value={v.tokenEndpointAuthMethod}
+            options={CLIENT_TYPES}
+            onChange={(method) =>
+              set({
+                tokenEndpointAuthMethod: method,
+                requirePkce: method === 'none' ? true : v.requirePkce,
+              })
+            }
+          />
+          <Check
+            checked={v.requirePkce}
+            disabled={v.tokenEndpointAuthMethod === 'none'}
+            onChange={(requirePkce) => set({ requirePkce })}
+            label="Require PKCE"
+            hint={
+              v.tokenEndpointAuthMethod === 'none'
+                ? 'Always on for public apps.'
+                : "Leave on. Turn off only for a client that truly can't send it."
+            }
+          />
+        </Section>
       </fieldset>
       {!readOnly && (
-        <Button type="submit" variant="primary" size="md" busy={c.busy === 'save'}>
-          {isNew ? 'Add app' : 'Save changes'}
-        </Button>
+        <FormActions>
+          <Button type="submit" variant="primary" size="md" busy={c.busy === 'save'}>
+            {isNew ? 'Add app' : 'Save changes'}
+          </Button>
+          <Button type="button" variant="ghost" size="md" onClick={() => navigate('/admin/apps')}>
+            Cancel
+          </Button>
+        </FormActions>
       )}
     </form>
   );
@@ -418,7 +464,7 @@ function AppBody({ c, id }: { c: Console; id: string }) {
         </div>
       )}
 
-      <Panel label="Connect your app">
+      <Panel label="Connect your app" action={<CopyButton value={env} label="Copy settings" />}>
         <div className="px-6 py-5">
           <p className="text-body-sm text-fg-muted">
             Any OIDC client library works. With the R.E.C. app conventions, set:
@@ -426,9 +472,6 @@ function AppBody({ c, id }: { c: Console; id: string }) {
           <pre className="mt-3 overflow-x-auto rounded-sm border border-border bg-surface-2 p-4 font-mono text-code text-fg">
             {env}
           </pre>
-          <div className="mt-3">
-            <CopyButton value={env} label="Copy settings" />
-          </div>
         </div>
       </Panel>
 
@@ -484,7 +527,7 @@ function AppBody({ c, id }: { c: Console; id: string }) {
               </p>
               <Button
                 size="md"
-                variant={data.enabled ? 'secondary' : 'secondary'}
+                variant="secondary"
                 busy={c.busy === 'enabled'}
                 onClick={async () => {
                   if (
