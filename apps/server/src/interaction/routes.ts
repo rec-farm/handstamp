@@ -437,11 +437,7 @@ export async function interactionRoutes(app: FastifyInstance, deps: InteractionD
           'That email address needs an @ and a domain.',
         );
       const handle = deps.setup.newUserHandle();
-      const options = await registrationOptions(
-        deps.rp,
-        { handle, displayName, email },
-        [],
-      );
+      const options = await registrationOptions(deps.rp, { handle, displayName, email }, []);
       await deps.passkeys.saveChallenge(
         'setup',
         `interaction:${interaction.uid}`,

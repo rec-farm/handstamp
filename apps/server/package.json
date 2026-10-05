@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch --exclude '../web/**' --env-file=../../.env src/main.ts",
-    "start": "tsx src/main.ts",
+    "build": "node build.mjs",
+    "start": "node --enable-source-maps dist/main.js",
     "cli": "tsx --env-file-if-exists=../../.env src/cli.ts",
     "db:migrate": "tsx --env-file-if-exists=../../.env src/migrate.ts",
     "typecheck": "tsc"
@@ -28,6 +29,7 @@
   "devDependencies": {
     "@types/oidc-provider": "^9.12.1",
     "@types/pg": "^8.23.1",
+    "esbuild": "^0.28.2",
     "pg": "^8.23.1",
     "vite": "^8.3.2"
   }
