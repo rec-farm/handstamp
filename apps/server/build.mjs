@@ -30,6 +30,8 @@ await build({
   platform: 'node',
   target: 'node24',
   minifySyntax: true,
+  // oidc-provider keys TTLs and adapter models by class name, so renaming a class breaks tokens.
+  keepNames: true,
   sourcemap: 'linked',
   sourcesContent: false,
   legalComments: 'linked',
