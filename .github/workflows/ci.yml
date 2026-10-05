@@ -39,3 +39,40 @@ jobs:
       - run: pnpm e2e
       - run: pnpm audit --prod --audit-level high
       - run: docker build -t handstamp:ci .
+  # The Rust spike (backend/, docs/RUST-PORT.md). It never replaces the Node image from here.
+  backend:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: handstamp
+          POSTGRES_PASSWORD: handstamp
+          POSTGRES_DB: handstamp_test
+        ports:
+          - 5438:5432
+        options: >-
+          --health-cmd "pg_isready -U handstamp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm backend:check
+      - run: pnpm --filter @handstamp/web build
+      - run: pnpm backend:test
+      - run: docker build -f Dockerfile.rust -t handstamp:rust-ci .

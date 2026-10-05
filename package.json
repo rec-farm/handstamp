@@ -20,7 +20,10 @@
     "handstamp": "pnpm --filter @handstamp/server cli",
     "example": "pnpm --filter @handstamp/example-app start",
     "e2e": "pnpm --filter @handstamp/web build && vitest run --config vitest.e2e.config.ts",
-    "example:idp": "pnpm --filter @handstamp/example-app idp"
+    "example:idp": "pnpm --filter @handstamp/example-app idp",
+    "backend:build": "cargo build --release --locked --manifest-path backend/Cargo.toml",
+    "backend:test": "cargo test --locked --manifest-path backend/Cargo.toml && pnpm backend:build && vitest run apps/server/test/rust-parity.test.ts",
+    "backend:check": "cargo fmt --manifest-path backend/Cargo.toml -- --check && cargo clippy --locked --manifest-path backend/Cargo.toml --all-targets -- -D warnings"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

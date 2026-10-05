@@ -60,6 +60,7 @@ The integration tests need the test database: `docker compose exec db psql -U ha
 | Path            | What                                                                 |
 | --------------- | -------------------------------------------------------------------- |
 | `apps/server`   | Fastify: `oidc-provider`, the interaction API, the built UI, the CLI |
+| `backend`       | Rust port spike (axum), not deployable yet: see `docs/RUST-PORT.md`  |
 | `apps/web`      | Vite + React SPA: sign-in, consent, account, admin console           |
 | `packages/core` | Domain logic with no framework code                                  |
 | `packages/db`   | Postgres schema, SQL migrations, the `oidc-provider` storage adapter |

@@ -1,0 +1,36 @@
+[package]
+name = "handstamp-server"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+license = "Apache-2.0"
+publish = false
+
+# Spike: the Rust port of apps/server. See docs/RUST-PORT.md before adding endpoints.
+[dependencies]
+aes-gcm = "0.10"
+anyhow = "1"
+axum = "0.8"
+base64 = "0.22"
+deadpool-postgres = "0.14"
+hkdf = "0.12"
+rsa = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "fs"] }
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
+tower-http = { version = "0.6", features = ["fs", "set-header"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+url = "2"
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

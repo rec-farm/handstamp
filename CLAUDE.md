@@ -24,3 +24,4 @@ The passwordless OpenID Connect provider for the R.E.C. product family (RECIAM S
 - The production CSP is `script-src 'self'` + one hash and `style-src 'self'`: no inline `<script>`, no React `style={…}` props. Use Tailwind classes.
 - Protocol changes must keep the OpenID conformance suite green: `./conformance/run.sh` (smoke) or `./conformance/run.sh full`. Accepted gaps live in `conformance/expected-*.json`, each with a reason.
 - `pnpm check` runs typecheck, tests and build. Integration tests need the dev Postgres (`compose.yaml`) and a `handstamp_test` database.
+- `backend/` is the Rust port spike. It may serve an OIDC or API endpoint only once that step's tests and the conformance suite pass (`docs/RUST-PORT.md`). Until the owner changes the hard rule above, production stays on Node.
