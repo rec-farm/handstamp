@@ -399,13 +399,20 @@ pub struct RateLimiter {
     windows: Mutex<HashMap<(Limit, String, IpAddr), (Instant, u32)>>,
 }
 
-/// The route template for a path: interaction and resume IDs don't make a new bucket.
+/// Words that appear in rate-limited routes. Anything else in a path (IDs, slugs, junk) collapses
+/// to ':' so the key space stays small however many distinct paths a client sends.
+const ROUTE_WORDS: [&str; 22] = [
+    "interaction", "auth", "details", "dev-login", "consent", "abort", "passkey", "passkeys", "options", "verify",
+    "setup", "enroll", "upstream", "complete", "callback", "token", "api", "me", "identities", "link", "console", "login",
+];
+
+/// The route template for a path: IDs and other parameters don't make a new bucket.
 fn route_key(path: &str) -> String {
-    let mut parts: Vec<&str> = path.split('/').collect();
-    if parts.len() > 2 && matches!(parts[1], "interaction" | "auth") {
-        parts[2] = ":uid";
-    }
-    parts.join("/")
+    path.split('/')
+        .take(8)
+        .map(|segment| if segment.is_empty() || ROUTE_WORDS.contains(&segment) { segment } else { ":" })
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 impl RateLimiter {
@@ -468,6 +475,7 @@ mod tests {
         let limiter = RateLimiter::new(1.0);
         let ip: IpAddr = "1.1.1.1".parse().unwrap();
         let allowed = (0..35).filter(|i| limiter.check(Limit::Interaction, &format!("/interaction/{i}/details"), ip)).count();
+        assert_eq!(route_key("/interaction/abc/upstream/anything"), "/interaction/:/upstream/:");
         assert_eq!(allowed, 30);
         assert!(limiter.check(Limit::Interaction, "/interaction/x/details", "2.2.2.2".parse().unwrap()));
         assert!(limiter.check(Limit::Interaction, "/interaction/x/consent", ip));

@@ -226,7 +226,9 @@ async fn complete_inner(app: &App, path_uid: &str, req: &Req) -> Result<Response
             if Some(existing.user_id) != recovery.user_id {
                 refuse!("identity_taken", Some(existing.user_id));
             }
-            finish_recovery(app, recovery.id, existing.user_id, recovery.revoke_other_methods).await?;
+            if !finish_recovery(app, recovery.id, existing.user_id, recovery.revoke_other_methods).await? {
+                refuse!("enrollment_expired", Some(existing.user_id));
+            }
             cookies.push(app.clear_sealed(ENROLL_COOKIE));
             method = format!("{}_recovery", provider.slug);
         }
@@ -260,7 +262,9 @@ async fn complete_inner(app: &App, path_uid: &str, req: &Req) -> Result<Response
             }
             return Err(error.into());
         }
-        finish_recovery(app, recovery.id, user, recovery.revoke_other_methods).await?;
+        if !finish_recovery(app, recovery.id, user, recovery.revoke_other_methods).await? {
+            refuse!("enrollment_expired", Some(user));
+        }
         cookies.push(app.clear_sealed(ENROLL_COOKIE));
         method = format!("{}_recovery", provider.slug);
         user
@@ -288,11 +292,14 @@ async fn complete_inner(app: &App, path_uid: &str, req: &Req) -> Result<Response
 }
 
 /// Recovery: consume the link, and on "I lost my device" drop every old passkey and session.
-async fn finish_recovery(app: &App, enrollment_id: Uuid, user: Uuid, revoke_others: bool) -> Result<(), ApiError> {
+/// False when the link was already used (two tabs racing): the second one gets nothing.
+async fn finish_recovery(app: &App, enrollment_id: Uuid, user: Uuid, revoke_others: bool) -> Result<bool, ApiError> {
     {
         let mut db = app.pool.get().await?;
         let tx = db.transaction().await?;
-        enrollment::consume(&tx, enrollment_id, Some(user)).await?;
+        if !enrollment::consume(&tx, enrollment_id, Some(user)).await? {
+            return Ok(false);
+        }
         if revoke_others {
             enrollment::revoke_other_passkeys(&tx, user).await?;
         }
@@ -307,7 +314,7 @@ async fn finish_recovery(app: &App, enrollment_id: Uuid, user: Uuid, revoke_othe
         .meta(json!({ "revoked_other_methods": revoke_others }))
         .write(&app.pool.get().await?)
         .await?;
-    Ok(())
+    Ok(true)
 }
 
 pub fn routes() -> Router<App> {

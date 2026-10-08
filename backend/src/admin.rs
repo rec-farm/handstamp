@@ -210,6 +210,11 @@ pub fn parse_provider(body: &Value) -> Result<Seed, ApiError> {
     if let Some(problem) = upstream_url_problem(&issuer) {
         return Err(invalid("issuer", format!("The issuer {problem}.")));
     }
+    if let Some(api) = &api_url
+        && let Some(problem) = upstream_url_problem(api)
+    {
+        return Err(invalid("apiUrl", format!("The API URL {problem}.")));
+    }
     Ok(Seed {
         trust_email_verified: if kind == "oidc" { trust } else { true },
         slug,
@@ -285,7 +290,7 @@ pub fn csv_cell(value: &Value) -> String {
         Value::Object(_) | Value::Array(_) => value.to_string(),
         other => other.to_string(),
     };
-    let text = if text.starts_with(['=', '+', '-', '@']) { format!("'{text}") } else { text };
+    let text = if text.starts_with(['=', '+', '-', '@', '\t', '\r']) { format!("'{text}") } else { text };
     format!("\"{}\"", text.replace('"', "\"\""))
 }
 
