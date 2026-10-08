@@ -1,9 +1,9 @@
-// Embeds the SQL migrations shared with the Node server (packages/db/migrations), so both
-// runtimes apply the same files, in the same order, to the same handstamp_migrations table.
+// Embeds the SQL migrations in migrations/. The table and advisory lock are the ones the Node server used, so an
+// existing database keeps its history.
 use std::{env, fs, path::PathBuf};
 
 fn main() {
-    let dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("../packages/db/migrations");
+    let dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("migrations");
     println!("cargo:rerun-if-changed={}", dir.display());
     let mut names: Vec<String> = fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
