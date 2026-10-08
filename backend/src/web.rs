@@ -35,7 +35,9 @@ fn escape(value: &str) -> String {
 }
 
 fn valid_key(key: &str) -> bool {
-    !key.is_empty() && key.starts_with(|c: char| c.is_ascii_lowercase()) && key.chars().all(|c| c.is_ascii_lowercase() || c == '-')
+    !key.is_empty()
+        && key.starts_with(|c: char| c.is_ascii_lowercase())
+        && key.chars().all(|c| c.is_ascii_lowercase() || c == '-')
 }
 
 pub fn inject_view(html: &str, view: View) -> String {
@@ -62,7 +64,9 @@ pub fn inline_script_hashes(html: &str) -> Vec<String> {
         let Some(open_end) = rest.find('>') else { break };
         let tag = &rest[..open_end];
         let body_start = open_end + 1;
-        let Some(close) = rest[body_start..].find("</script>") else { break };
+        let Some(close) = rest[body_start..].find("</script>") else {
+            break;
+        };
         if !tag.contains("src=") {
             let body = &rest[body_start..body_start + close];
             hashes.push(script_hash(body));
@@ -81,7 +85,9 @@ pub fn script_hash(body: &str) -> String {
 pub fn html_csp(script_hashes: &[String]) -> String {
     [
         "default-src 'self'".to_string(),
-        format!("script-src 'self' {}", script_hashes.join(" ")).trim().to_string(),
+        format!("script-src 'self' {}", script_hashes.join(" "))
+            .trim()
+            .to_string(),
         "style-src 'self'".into(),
         "img-src 'self' data:".into(),
         "font-src 'self'".into(),
@@ -108,7 +114,10 @@ impl Shell {
     }
 
     pub fn vite(url: String) -> Self {
-        Shell::Vite { url, http: reqwest::Client::new() }
+        Shell::Vite {
+            url,
+            http: reqwest::Client::new(),
+        }
     }
 
     /// The CSP for every response (None in development: Vite's client needs inline scripts and eval).
@@ -125,7 +134,12 @@ impl Shell {
             Shell::Bare { .. } => inject_view(BARE, view),
             Shell::Vite { url: base, http } => {
                 // Vite serves the transformed index.html for any SPA path.
-                let html = match http.get(format!("{base}{url}")).header("accept", "text/html").send().await {
+                let html = match http
+                    .get(format!("{base}{url}"))
+                    .header("accept", "text/html")
+                    .send()
+                    .await
+                {
                     Ok(response) => response.text().await.unwrap_or_else(|_| BARE.into()),
                     Err(_) => BARE.into(),
                 };
@@ -141,12 +155,13 @@ mod tests {
 
     #[test]
     fn injects_escaped_view_data_on_html() {
-        let html = inject_view("<!doctype html><html lang=\"en\"><body></body></html>", &[
-            ("view", "logout"),
-            ("client", "\"><script>x</script>"),
-            ("Bad", "x"),
-        ]);
-        assert!(html.contains(r#"<html data-hs-view="logout" data-hs-client="&quot;&gt;&lt;script&gt;x&lt;/script&gt;" lang="en">"#));
+        let html = inject_view(
+            "<!doctype html><html lang=\"en\"><body></body></html>",
+            &[("view", "logout"), ("client", "\"><script>x</script>"), ("Bad", "x")],
+        );
+        assert!(html.contains(
+            r#"<html data-hs-view="logout" data-hs-client="&quot;&gt;&lt;script&gt;x&lt;/script&gt;" lang="en">"#
+        ));
         assert!(!html.contains("data-hs-Bad"));
     }
 
@@ -155,7 +170,10 @@ mod tests {
         let html = r#"<script>a()</script><script type="module" src="/assets/x.js"></script><script>b()</script>"#;
         let hashes = inline_script_hashes(html);
         assert_eq!(hashes.len(), 2);
-        assert_eq!(hashes[0], format!("'sha256-{}'", STANDARD.encode(Sha256::digest(b"a()"))));
+        assert_eq!(
+            hashes[0],
+            format!("'sha256-{}'", STANDARD.encode(Sha256::digest(b"a()")))
+        );
     }
 
     #[test]

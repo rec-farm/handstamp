@@ -77,7 +77,10 @@ pub async fn group_slugs(db: &impl GenericClient, user: Uuid) -> Result<Vec<Stri
 
 pub async fn is_member(db: &impl GenericClient, user: Uuid, group: Uuid) -> Result<bool> {
     Ok(db
-        .query_opt("SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2", &[&group, &user])
+        .query_opt(
+            "SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2",
+            &[&group, &user],
+        )
         .await?
         .is_some())
 }
@@ -109,7 +112,10 @@ pub const TEST_USERNAME: &str = "test";
 /// checks in config.rs (S17). It has no credential of any kind.
 pub async fn ensure_test_user(pool: &Pool) -> Result<Uuid> {
     let db = pool.get().await?;
-    if let Some(row) = db.query_opt("SELECT id FROM users WHERE preferred_username = $1", &[&TEST_USERNAME]).await? {
+    if let Some(row) = db
+        .query_opt("SELECT id FROM users WHERE preferred_username = $1", &[&TEST_USERNAME])
+        .await?
+    {
         return Ok(row.get(0));
     }
     Ok(db
@@ -135,10 +141,14 @@ pub async fn sign_in_method_count(db: &impl GenericClient, user: Uuid) -> Result
 
 /// Locks the user row so two concurrent removals can't both see "one more left".
 pub async fn lock_user(db: &impl GenericClient, user: Uuid) -> Result<()> {
-    db.execute("SELECT id FROM users WHERE id = $1 FOR UPDATE", &[&user]).await?;
+    db.execute("SELECT id FROM users WHERE id = $1 FOR UPDATE", &[&user])
+        .await?;
     Ok(())
 }
 
 pub async fn display_name(db: &impl GenericClient, user: Uuid) -> Result<Option<String>> {
-    Ok(db.query_opt("SELECT display_name FROM users WHERE id = $1", &[&user]).await?.map(|r| r.get(0)))
+    Ok(db
+        .query_opt("SELECT display_name FROM users WHERE id = $1", &[&user])
+        .await?
+        .map(|r| r.get(0)))
 }

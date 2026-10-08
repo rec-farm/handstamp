@@ -35,9 +35,15 @@ impl Identities {
     pub async fn find(&self, issuer: &str, subject: &str) -> Result<Option<Linked>> {
         let db = self.pool.get().await?;
         Ok(db
-            .query_opt("SELECT id, user_id FROM identities WHERE issuer = $1 AND subject = $2", &[&issuer, &subject])
+            .query_opt(
+                "SELECT id, user_id FROM identities WHERE issuer = $1 AND subject = $2",
+                &[&issuer, &subject],
+            )
             .await?
-            .map(|r| Linked { id: r.get(0), user_id: r.get(1) }))
+            .map(|r| Linked {
+                id: r.get(0),
+                user_id: r.get(1),
+            }))
     }
 
     pub async fn list_for_user(&self, user: Uuid) -> Result<Vec<Value>> {
@@ -79,13 +85,24 @@ impl Identities {
         let mut db = self.pool.get().await?;
         let tx = db.transaction().await?;
         accounts::lock_user(&tx, user).await?;
-        if tx.query_opt("SELECT id FROM identities WHERE id = $1 AND user_id = $2", &[&id, &user]).await?.is_none() {
+        if tx
+            .query_opt(
+                "SELECT id FROM identities WHERE id = $1 AND user_id = $2",
+                &[&id, &user],
+            )
+            .await?
+            .is_none()
+        {
             return Ok(false);
         }
         if accounts::sign_in_method_count(&tx, user).await? <= 1 {
             return Err(LastMethod.into());
         }
-        tx.execute("UPDATE users SET email_identity_id = NULL WHERE email_identity_id = $1", &[&id]).await?;
+        tx.execute(
+            "UPDATE users SET email_identity_id = NULL WHERE email_identity_id = $1",
+            &[&id],
+        )
+        .await?;
         tx.execute("DELETE FROM identities WHERE id = $1", &[&id]).await?;
         tx.commit().await?;
         Ok(true)
@@ -100,7 +117,10 @@ impl Identities {
         let email = provider.trusted_email(identity);
         let holder: Option<Uuid> = match &email {
             Some(email) => tx
-                .query_opt("SELECT id FROM users WHERE lower(email) = $1 AND email_verified", &[email])
+                .query_opt(
+                    "SELECT id FROM users WHERE lower(email) = $1 AND email_verified",
+                    &[email],
+                )
                 .await?
                 .map(|r| r.get(0)),
             None => None,
@@ -122,7 +142,11 @@ impl Identities {
             .get(0);
         let identity_id = link(&tx, user, provider, identity).await?;
         if kept.is_some() {
-            tx.execute("UPDATE users SET email_identity_id = $2 WHERE id = $1", &[&user, &identity_id]).await?;
+            tx.execute(
+                "UPDATE users SET email_identity_id = $2 WHERE id = $1",
+                &[&user, &identity_id],
+            )
+            .await?;
         }
         Entry::new("user.created", Actor::User)
             .by(Some(user))
@@ -146,9 +170,17 @@ impl Identities {
     }
 }
 
-pub async fn link(db: &impl GenericClient, user: Uuid, provider: &Provider, identity: &UpstreamIdentity) -> Result<Uuid> {
+pub async fn link(
+    db: &impl GenericClient,
+    user: Uuid,
+    provider: &Provider,
+    identity: &UpstreamIdentity,
+) -> Result<Uuid> {
     if let Some(existing) = db
-        .query_opt("SELECT id, user_id FROM identities WHERE issuer = $1 AND subject = $2", &[&identity.issuer, &identity.subject])
+        .query_opt(
+            "SELECT id, user_id FROM identities WHERE issuer = $1 AND subject = $2",
+            &[&identity.issuer, &identity.subject],
+        )
         .await?
     {
         if existing.get::<_, Uuid>(1) != user {

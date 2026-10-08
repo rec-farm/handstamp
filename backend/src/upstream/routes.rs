@@ -58,15 +58,37 @@ fn callback_url(app: &App, slug: &str) -> String {
 }
 
 /// Redirects to the provider, remembering the flow in the state cookie. None: no such provider.
-async fn begin(app: &App, slug: &str, purpose: &str, uid: Option<String>, sub: Option<String>, console_uid: Option<String>) -> anyhow::Result<Option<(String, String)>> {
-    let Some(provider) = app.providers.load(slug).await? else { return Ok(None) };
+async fn begin(
+    app: &App,
+    slug: &str,
+    purpose: &str,
+    uid: Option<String>,
+    sub: Option<String>,
+    console_uid: Option<String>,
+) -> anyhow::Result<Option<(String, String)>> {
+    let Some(provider) = app.providers.load(slug).await? else {
+        return Ok(None);
+    };
     let (url, pending) = client::begin(&provider, &callback_url(app, slug)).await?;
-    let state = UpstreamState { pending, purpose: purpose.into(), slug: slug.into(), uid, sub, console_uid, identity: None };
+    let state = UpstreamState {
+        pending,
+        purpose: purpose.into(),
+        slug: slug.into(),
+        uid,
+        sub,
+        console_uid,
+        identity: None,
+    };
     Ok(Some((url, app.write_sealed(STATE_COOKIE, &state, STATE_SECONDS))))
 }
 
 /// Starts linking another identity to a signed-in user: the provider URL and the state cookie.
-pub async fn start_link(app: &App, slug: &str, sub: &str, console_uid: &str) -> anyhow::Result<Option<(String, String)>> {
+pub async fn start_link(
+    app: &App,
+    slug: &str,
+    sub: &str,
+    console_uid: &str,
+) -> anyhow::Result<Option<(String, String)>> {
     begin(app, slug, "link", None, Some(sub.into()), Some(console_uid.into())).await
 }
 
@@ -80,8 +102,14 @@ fn see_other(location: &str, cookies: Vec<String>) -> Response {
 
 /// The interaction this browser is in, by its path-scoped cookie.
 async fn interaction_of(app: &App, req: &Req) -> anyhow::Result<Option<Interaction>> {
-    let Some(cookie) = req.cookie(app.cookie_names().interaction) else { return Ok(None) };
-    Ok(app.store.find::<Interaction>(INTERACTION, cookie).await?.map(|f| f.value))
+    let Some(cookie) = req.cookie(app.cookie_names().interaction) else {
+        return Ok(None);
+    };
+    Ok(app
+        .store
+        .find::<Interaction>(INTERACTION, cookie)
+        .await?
+        .map(|f| f.value))
 }
 
 /// GET /interaction/:uid/upstream/:slug
@@ -132,7 +160,9 @@ async fn callback_inner(app: &App, slug: &str, req: &Req) -> Result<Response, Ap
         };
         see_other(&location, vec![clear.clone()])
     };
-    let Some(provider) = app.providers.load(&pending.slug).await? else { return Ok(fail("provider_unavailable")) };
+    let Some(provider) = app.providers.load(&pending.slug).await? else {
+        return Ok(fail("provider_unavailable"));
+    };
     let query: HashMap<String, String> = req.query_pairs().into_iter().collect();
     let identity = match client::finish(&provider, &query, &callback_url(app, slug), &pending.pending).await {
         Ok(identity) => identity,
@@ -153,7 +183,9 @@ async fn callback_inner(app: &App, slug: &str, req: &Req) -> Result<Response, Ap
             }
             None => false,
         };
-        let (Some(session), true) = (session, same) else { return Ok(fail("link_expired")) };
+        let (Some(session), true) = (session, same) else {
+            return Ok(fail("link_expired"));
+        };
         let user = Uuid::parse_str(&session.sub).map_err(|_| ApiError::server())?;
         if let Err(error) = app.identities.link(user, &provider, &identity).await {
             if !error.is::<IdentityTaken>() {
@@ -176,8 +208,14 @@ async fn callback_inner(app: &App, slug: &str, req: &Req) -> Result<Response, Ap
     }
 
     let uid = pending.uid.clone().unwrap_or_default();
-    let done = UpstreamState { identity: Some(identity), ..pending };
-    Ok(see_other(&format!("/interaction/{uid}/upstream/complete"), vec![app.write_sealed(STATE_COOKIE, &done, STATE_SECONDS)]))
+    let done = UpstreamState {
+        identity: Some(identity),
+        ..pending
+    };
+    Ok(see_other(
+        &format!("/interaction/{uid}/upstream/complete"),
+        vec![app.write_sealed(STATE_COOKIE, &done, STATE_SECONDS)],
+    ))
 }
 
 /// GET /interaction/:uid/upstream/complete
@@ -272,7 +310,14 @@ async fn complete_inner(app: &App, path_uid: &str, req: &Req) -> Result<Response
         // Unknown identity, no invite: only the provider's sign-up policy can let them in. The
         // answer is the same whether or not someone already uses that email here (§3.3).
         if let Err(reason) = provider.signup_decision(&identity) {
-            refuse!(if reason == "signup_closed" { "unlinked_identity" } else { reason }, None);
+            refuse!(
+                if reason == "signup_closed" {
+                    "unlinked_identity"
+                } else {
+                    reason
+                },
+                None
+            );
         }
         app.identities.create_user(&provider, &identity, "signup").await?
     };
@@ -323,4 +368,3 @@ pub fn routes() -> Router<App> {
         .route("/interaction/{uid}/upstream/{slug}", get(start))
         .route("/upstream/{slug}/callback", get(callback))
 }
-

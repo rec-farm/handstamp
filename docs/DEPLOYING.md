@@ -1,6 +1,6 @@
 # Deploying Handstamp
 
-Handstamp is one container (Fastify serving the OIDC endpoints, the API and the web UI) plus
+Handstamp is one container (a single Rust binary serving the OIDC endpoints, the API and the web UI) plus
 Postgres 17. It sits behind your TLS reverse proxy. This guide uses `https://id.rec.farm` as the
 example issuer.
 
@@ -76,8 +76,9 @@ Dokploy's own health view uses the image's `HEALTHCHECK` (`/readyz`). Keep **one
 ([why](#operations-notes)).
 
 If you'd rather use a Dokploy-managed Postgres, deploy the `Dockerfile` as an Application
-instead, set `DATABASE_URL` to the managed database's internal URL, and set
-`NODE_ENV=production`, `HOST=0.0.0.0` and `PORT=3000` yourself (compose normally sets them).
+instead and set `DATABASE_URL` to the managed database's internal URL. The image already runs in
+production mode on `0.0.0.0:3000`. Postgres TLS is used when the server offers it; add
+`?sslmode=require` to insist on it (certificates are checked against the Mozilla root store).
 
 ## Plain Docker Compose
 
@@ -226,7 +227,7 @@ for a Compose service. Redeploy after changing the file: it is synced at startup
 
 Those apps show up read-only in the admin UI.
 
-**Logs.** JSON lines on stdout (pino). Cookies, authorization headers, codes, tokens and secrets
+**Logs.** JSON lines on stdout. Cookies, authorization headers, codes, tokens and secrets
 are redacted. `LOG_LEVEL=debug` adds detail without exposing them.
 
 ## Go-live checklist

@@ -66,17 +66,31 @@ impl Provider {
             return Err("signup_closed");
         }
         if !self.allowed_email_domains.is_empty() {
-            let domain = self.trusted_email(identity).and_then(|e| e.split('@').nth(1).map(str::to_string));
-            let allowed: Vec<String> =
-                self.allowed_email_domains.iter().map(|d| d.to_lowercase().trim_start_matches('@').to_string()).collect();
+            let domain = self
+                .trusted_email(identity)
+                .and_then(|e| e.split('@').nth(1).map(str::to_string));
+            let allowed: Vec<String> = self
+                .allowed_email_domains
+                .iter()
+                .map(|d| d.to_lowercase().trim_start_matches('@').to_string())
+                .collect();
             if domain.is_none_or(|d| !allowed.contains(&d)) {
                 return Err("email_domain");
             }
         }
         if self.kind == "github" && !self.github_allowed_orgs.is_empty() {
-            let orgs: Vec<String> =
-                identity.orgs.clone().unwrap_or_default().iter().map(|o| o.to_lowercase()).collect();
-            if !self.github_allowed_orgs.iter().any(|o| orgs.contains(&o.to_lowercase())) {
+            let orgs: Vec<String> = identity
+                .orgs
+                .clone()
+                .unwrap_or_default()
+                .iter()
+                .map(|o| o.to_lowercase())
+                .collect();
+            if !self
+                .github_allowed_orgs
+                .iter()
+                .any(|o| orgs.contains(&o.to_lowercase()))
+            {
                 return Err("org");
             }
         }
@@ -91,7 +105,11 @@ pub fn upstream_url_problem(value: &str) -> Option<&'static str> {
         Ok(url) => {
             let host = url.host_str().unwrap_or_default();
             let loopback = matches!(host, "localhost" | "127.0.0.1" | "[::1]");
-            if url.scheme() == "https" || (url.scheme() == "http" && loopback) { None } else { Some("must use https://") }
+            if url.scheme() == "https" || (url.scheme() == "http" && loopback) {
+                None
+            } else {
+                Some("must use https://")
+            }
         }
     }
 }
@@ -114,7 +132,15 @@ pub struct Seed {
 }
 
 fn list(value: Option<&String>) -> Vec<String> {
-    value.map(|v| v.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect()).unwrap_or_default()
+    value
+        .map(|v| {
+            v.split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn yes(value: Option<&String>) -> bool {
@@ -127,9 +153,17 @@ pub fn from_env(env: &HashMap<String, String>) -> Result<Vec<Seed>> {
     let mut seeds = Vec::new();
     let gh = "HANDSTAMP_UPSTREAM_GITHUB_";
     if let Some(client_id) = get(&format!("{gh}CLIENT_ID")) {
-        let web = get(&format!("{gh}URL")).map(String::as_str).unwrap_or("https://github.com").trim_end_matches('/').to_string();
+        let web = get(&format!("{gh}URL"))
+            .map(String::as_str)
+            .unwrap_or("https://github.com")
+            .trim_end_matches('/')
+            .to_string();
         let api = get(&format!("{gh}API_URL")).cloned().unwrap_or_else(|| {
-            if web == "https://github.com" { "https://api.github.com".into() } else { format!("{web}/api/v3") }
+            if web == "https://github.com" {
+                "https://api.github.com".into()
+            } else {
+                format!("{web}/api/v3")
+            }
         });
         seeds.push(Seed {
             slug: "github".into(),
@@ -151,7 +185,9 @@ pub fn from_env(env: &HashMap<String, String>) -> Result<Vec<Seed>> {
         seeds.push(Seed {
             slug: "google".into(),
             kind: "google".into(),
-            display_name: get(&format!("{google}NAME")).cloned().unwrap_or_else(|| "Google".into()),
+            display_name: get(&format!("{google}NAME"))
+                .cloned()
+                .unwrap_or_else(|| "Google".into()),
             issuer: "https://accounts.google.com".into(),
             api_url: None,
             client_id: client_id.clone(),
@@ -167,7 +203,9 @@ pub fn from_env(env: &HashMap<String, String>) -> Result<Vec<Seed>> {
     let mut keys: Vec<&String> = env.keys().collect();
     keys.sort();
     for key in keys {
-        let Some(captures) = pattern.captures(key) else { continue };
+        let Some(captures) = pattern.captures(key) else {
+            continue;
+        };
         let name = &captures[1];
         let prefix = format!("HANDSTAMP_UPSTREAM_OIDC_{name}_");
         let slug = name.to_lowercase().replace('_', "-");
@@ -180,7 +218,11 @@ pub fn from_env(env: &HashMap<String, String>) -> Result<Vec<Seed>> {
             api_url: None,
             client_id: env.get(&format!("{prefix}CLIENT_ID")).cloned().unwrap_or_default(),
             client_secret: get(&format!("{prefix}CLIENT_SECRET")).cloned(),
-            scopes: if scopes.is_empty() { vec!["openid".into(), "email".into(), "profile".into()] } else { scopes },
+            scopes: if scopes.is_empty() {
+                vec!["openid".into(), "email".into(), "profile".into()]
+            } else {
+                scopes
+            },
             allow_signup: yes(env.get(&format!("{prefix}ALLOW_SIGNUP"))),
             allowed_email_domains: list(env.get(&format!("{prefix}ALLOWED_DOMAINS"))),
             github_allowed_orgs: vec![],
@@ -204,7 +246,11 @@ pub fn from_env(env: &HashMap<String, String>) -> Result<Vec<Seed>> {
             problems.push(format!("API URL {p}"));
         }
         if !problems.is_empty() {
-            bail!("Upstream provider \"{}\" is misconfigured: {}", seed.slug, problems.join(", "));
+            bail!(
+                "Upstream provider \"{}\" is misconfigured: {}",
+                seed.slug,
+                problems.join(", ")
+            );
         }
     }
     Ok(seeds)
@@ -224,7 +270,10 @@ const COLUMNS: &str = "id, slug, kind, display_name, issuer, api_url, client_id,
 
 impl Providers {
     pub fn new(pool: Pool, root: &[u8]) -> Self {
-        Self { pool, key: crypto::derive_key(root, Purpose::UpstreamSecrets) }
+        Self {
+            pool,
+            key: crypto::derive_key(root, Purpose::UpstreamSecrets),
+        }
     }
 
     /// Env-seeded providers are synced at boot and read-only in the admin UI. One removed from the
@@ -233,7 +282,11 @@ impl Providers {
         let seeds = from_env(env)?;
         let db = self.pool.get().await?;
         for (index, seed) in seeds.iter().enumerate() {
-            let sealed = crypto::seal(&self.key, seed.client_secret.as_deref().unwrap_or_default().as_bytes(), &seed.slug);
+            let sealed = crypto::seal(
+                &self.key,
+                seed.client_secret.as_deref().unwrap_or_default().as_bytes(),
+                &seed.slug,
+            );
             let order = index as i32;
             db.execute(
                 "INSERT INTO upstream_providers (slug, kind, display_name, issuer, api_url, client_id, client_secret_enc, scopes, \
@@ -295,7 +348,12 @@ impl Providers {
 
     pub async fn load(&self, slug: &str) -> Result<Option<Provider>> {
         let db = self.pool.get().await?;
-        let Some(r) = db.query_opt(&format!("SELECT {COLUMNS} FROM upstream_providers WHERE slug = $1 AND enabled"), &[&slug]).await?
+        let Some(r) = db
+            .query_opt(
+                &format!("SELECT {COLUMNS} FROM upstream_providers WHERE slug = $1 AND enabled"),
+                &[&slug],
+            )
+            .await?
         else {
             return Ok(None);
         };
@@ -356,14 +414,21 @@ impl Providers {
 
     async fn source_of(&self, slug: &str) -> Result<Option<String>> {
         let db = self.pool.get().await?;
-        Ok(db.query_opt("SELECT source FROM upstream_providers WHERE slug = $1", &[&slug]).await?.map(|r| r.get(0)))
+        Ok(db
+            .query_opt("SELECT source FROM upstream_providers WHERE slug = $1", &[&slug])
+            .await?
+            .map(|r| r.get(0)))
     }
 
     pub async fn create(&self, seed: &Seed) -> Result<bool> {
         if self.source_of(&seed.slug).await?.is_some() {
             return Ok(false);
         }
-        let sealed = crypto::seal(&self.key, seed.client_secret.as_deref().unwrap_or_default().as_bytes(), &seed.slug);
+        let sealed = crypto::seal(
+            &self.key,
+            seed.client_secret.as_deref().unwrap_or_default().as_bytes(),
+            &seed.slug,
+        );
         let db = self.pool.get().await?;
         db.execute(
             "INSERT INTO upstream_providers (slug, kind, display_name, issuer, api_url, client_id, client_secret_enc, scopes, \
@@ -395,7 +460,10 @@ impl Providers {
             Some(source) if source != "db" => return Err(ReadOnly.into()),
             _ => {}
         }
-        let sealed = seed.client_secret.as_ref().map(|s| crypto::seal(&self.key, s.as_bytes(), &seed.slug));
+        let sealed = seed
+            .client_secret
+            .as_ref()
+            .map(|s| crypto::seal(&self.key, s.as_bytes(), &seed.slug));
         let db = self.pool.get().await?;
         db.execute(
             "UPDATE upstream_providers SET kind = $2, display_name = $3, issuer = $4, api_url = $5, client_id = $6, \
@@ -427,8 +495,11 @@ impl Providers {
             _ => {}
         }
         let db = self.pool.get().await?;
-        db.execute("UPDATE upstream_providers SET enabled = $2, updated_at = now() WHERE slug = $1", &[&slug, &enabled])
-            .await?;
+        db.execute(
+            "UPDATE upstream_providers SET enabled = $2, updated_at = now() WHERE slug = $1",
+            &[&slug, &enabled],
+        )
+        .await?;
         Ok(true)
     }
 }
@@ -515,18 +586,37 @@ mod tests {
     fn untrusted_issuers_cannot_vouch_for_email() {
         let oidc = provider("oidc");
         assert_eq!(oidc.trusted_email(&identity("a@corp.example", true)), None);
-        assert_eq!(oidc.signup_decision(&identity("a@corp.example", true)), Err("email_domain"));
+        assert_eq!(
+            oidc.signup_decision(&identity("a@corp.example", true)),
+            Err("email_domain")
+        );
         let google = provider("google");
-        assert_eq!(google.trusted_email(&identity("A@Corp.Example", true)).as_deref(), Some("a@corp.example"));
+        assert_eq!(
+            google.trusted_email(&identity("A@Corp.Example", true)).as_deref(),
+            Some("a@corp.example")
+        );
         assert_eq!(google.signup_decision(&identity("a@corp.example", true)), Ok(()));
-        assert_eq!(google.signup_decision(&identity("a@corp.example", false)), Err("email_domain"));
-        let closed = Provider { allow_signup: false, ..provider("google") };
-        assert_eq!(closed.signup_decision(&identity("a@corp.example", true)), Err("signup_closed"));
+        assert_eq!(
+            google.signup_decision(&identity("a@corp.example", false)),
+            Err("email_domain")
+        );
+        let closed = Provider {
+            allow_signup: false,
+            ..provider("google")
+        };
+        assert_eq!(
+            closed.signup_decision(&identity("a@corp.example", true)),
+            Err("signup_closed")
+        );
     }
 
     #[test]
     fn github_orgs() {
-        let gh = Provider { allowed_email_domains: vec![], github_allowed_orgs: vec!["RECIAM".into()], ..provider("github") };
+        let gh = Provider {
+            allowed_email_domains: vec![],
+            github_allowed_orgs: vec!["RECIAM".into()],
+            ..provider("github")
+        };
         let mut who = identity("a@x.example", true);
         assert_eq!(gh.signup_decision(&who), Err("org"));
         who.orgs = Some(vec!["reciam".into()]);

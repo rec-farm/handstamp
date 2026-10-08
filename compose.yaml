@@ -12,7 +12,6 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgres://handstamp:${POSTGRES_PASSWORD:-handstamp}@db:5432/handstamp
-      NODE_ENV: production
       HOST: 0.0.0.0
       PORT: '3000'
     ports:

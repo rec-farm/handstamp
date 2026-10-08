@@ -68,7 +68,11 @@ impl Setup {
         let code = new_setup_code();
         let mut db = self.pool.get().await?;
         let tx = db.transaction().await?;
-        tx.execute("DELETE FROM enrollment_tokens WHERE purpose = 'setup' AND consumed_at IS NULL", &[]).await?;
+        tx.execute(
+            "DELETE FROM enrollment_tokens WHERE purpose = 'setup' AND consumed_at IS NULL",
+            &[],
+        )
+        .await?;
         tx.execute(
             "INSERT INTO enrollment_tokens (token_hash, purpose, expires_at) \
              VALUES ($1, 'setup', now() + make_interval(mins => $2))",
@@ -115,8 +119,12 @@ impl Setup {
         let mut db = self.pool.get().await?;
         let tx = db.transaction().await?;
         // Serialises concurrent claims: only the first one sees an unclaimed instance.
-        let settings =
-            tx.query_one("SELECT setup_completed_at FROM instance_settings WHERE id = 1 FOR UPDATE", &[]).await?;
+        let settings = tx
+            .query_one(
+                "SELECT setup_completed_at FROM instance_settings WHERE id = 1 FOR UPDATE",
+                &[],
+            )
+            .await?;
         if settings.get::<_, Option<DateTime<Utc>>>(0).is_some() {
             return Err(SetupError::AlreadyClaimed.into());
         }
@@ -139,9 +147,21 @@ impl Setup {
             .await?
             .get(0);
         passkeys::add(&tx, user, passkey, passkey_name).await?;
-        tx.execute("UPDATE enrollment_tokens SET consumed_by_user_id = $2 WHERE id = $1", &[&token_id, &user]).await?;
-        tx.execute("UPDATE instance_settings SET setup_completed_at = now(), updated_at = now() WHERE id = 1", &[]).await?;
-        Entry::new("instance.claimed", Actor::User).by(Some(user)).target("user", user).write(&tx).await?;
+        tx.execute(
+            "UPDATE enrollment_tokens SET consumed_by_user_id = $2 WHERE id = $1",
+            &[&token_id, &user],
+        )
+        .await?;
+        tx.execute(
+            "UPDATE instance_settings SET setup_completed_at = now(), updated_at = now() WHERE id = 1",
+            &[],
+        )
+        .await?;
+        Entry::new("instance.claimed", Actor::User)
+            .by(Some(user))
+            .target("user", user)
+            .write(&tx)
+            .await?;
         tx.commit().await?;
         Ok(user)
     }
@@ -172,7 +192,12 @@ pub struct Enrollments {
 const ENROLLMENT: &str = "SELECT id, purpose, user_id, revoke_other_methods FROM enrollment_tokens";
 
 fn enrollment(r: &tokio_postgres::Row) -> Enrollment {
-    Enrollment { id: r.get(0), purpose: r.get(1), user_id: r.get(2), revoke_other_methods: r.get(3) }
+    Enrollment {
+        id: r.get(0),
+        purpose: r.get(1),
+        user_id: r.get(2),
+        revoke_other_methods: r.get(3),
+    }
 }
 
 impl Enrollments {
@@ -196,8 +221,15 @@ impl Enrollments {
             )
             .await?
             .get(0);
-        Entry::new("invite.created", actor).by(created_by).target("enrollment", id).write(&db).await?;
-        Ok(Link { link: self.link(&token), token })
+        Entry::new("invite.created", actor)
+            .by(created_by)
+            .target("enrollment", id)
+            .write(&db)
+            .await?;
+        Ok(Link {
+            link: self.link(&token),
+            token,
+        })
     }
 
     pub async fn create_recovery(
@@ -229,7 +261,10 @@ impl Enrollments {
             .write(&tx)
             .await?;
         tx.commit().await?;
-        Ok(Link { link: self.link(&token), token })
+        Ok(Link {
+            link: self.link(&token),
+            token,
+        })
     }
 
     pub async fn find(&self, token: &str) -> Result<Option<Enrollment>> {
@@ -250,7 +285,10 @@ impl Enrollments {
     pub async fn by_id(&self, id: Uuid) -> Result<Option<Enrollment>> {
         let db = self.pool.get().await?;
         Ok(db
-            .query_opt(&format!("{ENROLLMENT} WHERE id = $1 AND consumed_at IS NULL AND expires_at > now()"), &[&id])
+            .query_opt(
+                &format!("{ENROLLMENT} WHERE id = $1 AND consumed_at IS NULL AND expires_at > now()"),
+                &[&id],
+            )
             .await?
             .as_ref()
             .map(enrollment))
@@ -259,7 +297,11 @@ impl Enrollments {
     /// Records who used an invite (consumed before the account existed).
     pub async fn record_consumer(&self, id: Uuid, user: Uuid) -> Result<()> {
         let db = self.pool.get().await?;
-        db.execute("UPDATE enrollment_tokens SET consumed_by_user_id = $2 WHERE id = $1", &[&id, &user]).await?;
+        db.execute(
+            "UPDATE enrollment_tokens SET consumed_by_user_id = $2 WHERE id = $1",
+            &[&id, &user],
+        )
+        .await?;
         Ok(())
     }
 }

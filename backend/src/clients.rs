@@ -104,7 +104,10 @@ pub struct Invalid {
 
 impl Invalid {
     pub fn new(field: impl Into<String>, message: impl Into<String>) -> Self {
-        Self { field: field.into(), message: message.into() }
+        Self {
+            field: field.into(),
+            message: message.into(),
+        }
     }
 }
 
@@ -126,7 +129,10 @@ impl ClientDefinition {
 
     pub fn validate(&self) -> Result<(), Invalid> {
         if !CLIENT_ID.is_match(&self.client_id) {
-            return Err(Invalid::new("clientId", "Use 2–64 lowercase letters, digits, dots, dashes or underscores."));
+            return Err(Invalid::new(
+                "clientId",
+                "Use 2–64 lowercase letters, digits, dots, dashes or underscores.",
+            ));
         }
         if self.name.is_empty() {
             return Err(Invalid::new("name", "Give the app a name."));
@@ -153,7 +159,10 @@ impl ClientDefinition {
             }
         }
         if !AUTH_METHODS.contains(&self.token_endpoint_auth_method.as_str()) {
-            return Err(Invalid::new("tokenEndpointAuthMethod", "Unknown token endpoint auth method."));
+            return Err(Invalid::new(
+                "tokenEndpointAuthMethod",
+                "Unknown token endpoint auth method.",
+            ));
         }
         if let Some(uri) = &self.backchannel_logout_uri
             && let Some(problem) = redirect_uri_problem(uri)
@@ -163,7 +172,10 @@ impl ClientDefinition {
         if let Some(group) = &self.required_group
             && !GROUP_SLUG.is_match(group)
         {
-            return Err(Invalid::new("requiredGroup", "Use lowercase letters, digits, dots, dashes, colons or underscores."));
+            return Err(Invalid::new(
+                "requiredGroup",
+                "Use lowercase letters, digits, dots, dashes, colons or underscores.",
+            ));
         }
         if !self.scopes.iter().any(|s| s == "openid") {
             return Err(Invalid::new("scopes", "Scopes must include openid."));
@@ -236,7 +248,11 @@ impl Client {
     }
 
     pub fn display_name(&self) -> &str {
-        if self.name.is_empty() { &self.client_id } else { &self.name }
+        if self.name.is_empty() {
+            &self.client_id
+        } else {
+            &self.name
+        }
     }
 }
 
@@ -332,16 +348,24 @@ pub struct Clients {
 
 impl Clients {
     pub fn new(pool: Pool, root: &[u8]) -> Self {
-        Self { pool, key: crypto::derive_key(root, Purpose::ClientSecrets) }
+        Self {
+            pool,
+            key: crypto::derive_key(root, Purpose::ClientSecrets),
+        }
     }
 
     /// The client for the protocol. Disabled or unknown clients don't exist as far as it's concerned.
     pub async fn load(&self, client_id: &str) -> Result<Option<Client>> {
         let db = self.pool.get().await?;
         let row = db
-            .query_opt(&format!("SELECT {COLUMNS} FROM oidc_clients WHERE client_id = $1 AND enabled"), &[&client_id])
+            .query_opt(
+                &format!("SELECT {COLUMNS} FROM oidc_clients WHERE client_id = $1 AND enabled"),
+                &[&client_id],
+            )
             .await?;
-        let Some(row) = row.as_ref().map(ClientRow::from) else { return Ok(None) };
+        let Some(row) = row.as_ref().map(ClientRow::from) else {
+            return Ok(None);
+        };
         let secret = match &row.secret_enc {
             Some(sealed) => Some(crypto::open_string(&self.key, sealed, &row.client_id)?),
             None => None,
@@ -365,8 +389,16 @@ impl Clients {
     /// on a fresh instance.
     async fn group_id(db: &impl GenericClient, slug: Option<&str>) -> Result<Option<Uuid>> {
         let Some(slug) = slug else { return Ok(None) };
-        db.execute("INSERT INTO groups (slug, name) VALUES ($1, $1) ON CONFLICT DO NOTHING", &[&slug]).await?;
-        Ok(Some(db.query_one("SELECT id FROM groups WHERE slug = $1", &[&slug]).await?.get(0)))
+        db.execute(
+            "INSERT INTO groups (slug, name) VALUES ($1, $1) ON CONFLICT DO NOTHING",
+            &[&slug],
+        )
+        .await?;
+        Ok(Some(
+            db.query_one("SELECT id FROM groups WHERE slug = $1", &[&slug])
+                .await?
+                .get(0),
+        ))
     }
 
     pub async fn upsert(&self, def: &ClientDefinition, secret: Option<&str>, source: &str) -> Result<()> {
@@ -374,7 +406,11 @@ impl Clients {
         if !public && secret.is_none_or(|s| s.len() < 32) {
             bail!("Client {} needs a secret of at least 32 characters", def.client_id);
         }
-        let sealed = if public { None } else { Some(crypto::seal(&self.key, secret.unwrap().as_bytes(), &def.client_id)) };
+        let sealed = if public {
+            None
+        } else {
+            Some(crypto::seal(&self.key, secret.unwrap().as_bytes(), &def.client_id))
+        };
         let db = self.pool.get().await?;
         let group = Self::group_id(&db, def.required_group.as_deref()).await?;
         db.execute(
@@ -405,13 +441,21 @@ impl Clients {
 
     pub async fn list(&self) -> Result<Vec<ClientRow>> {
         let db = self.pool.get().await?;
-        Ok(db.query(&format!("SELECT {COLUMNS} FROM oidc_clients ORDER BY name"), &[]).await?.iter().map(ClientRow::from).collect())
+        Ok(db
+            .query(&format!("SELECT {COLUMNS} FROM oidc_clients ORDER BY name"), &[])
+            .await?
+            .iter()
+            .map(ClientRow::from)
+            .collect())
     }
 
     pub async fn get(&self, client_id: &str) -> Result<Option<ClientRow>> {
         let db = self.pool.get().await?;
         Ok(db
-            .query_opt(&format!("SELECT {COLUMNS} FROM oidc_clients WHERE client_id = $1"), &[&client_id])
+            .query_opt(
+                &format!("SELECT {COLUMNS} FROM oidc_clients WHERE client_id = $1"),
+                &[&client_id],
+            )
             .await?
             .as_ref()
             .map(ClientRow::from))
@@ -438,7 +482,9 @@ impl Clients {
 
     /// Keeps the current secret unless the auth method changes to or from public.
     pub async fn update(&self, def: &ClientDefinition) -> Result<Option<Option<String>>> {
-        let Some(row) = self.editable(&def.client_id).await? else { return Ok(None) };
+        let Some(row) = self.editable(&def.client_id).await? else {
+            return Ok(None);
+        };
         let was_public = row.auth_method == "none";
         let mut new_secret = None;
         let secret = if def.is_public() {
@@ -447,7 +493,11 @@ impl Clients {
             new_secret = Some(new_client_secret());
             new_secret.clone()
         } else {
-            Some(crypto::open_string(&self.key, row.secret_enc.as_deref().unwrap_or_default(), &row.client_id)?)
+            Some(crypto::open_string(
+                &self.key,
+                row.secret_enc.as_deref().unwrap_or_default(),
+                &row.client_id,
+            )?)
         };
         self.upsert(def, secret.as_deref(), "db").await?;
         if !row.enabled {
@@ -458,7 +508,9 @@ impl Clients {
 
     /// Replaces the secret at once: the old one stops working immediately.
     pub async fn rotate_secret(&self, client_id: &str) -> Result<Option<String>> {
-        let Some(row) = self.editable(client_id).await? else { return Ok(None) };
+        let Some(row) = self.editable(client_id).await? else {
+            return Ok(None);
+        };
         if row.auth_method == "none" {
             return Ok(None);
         }
@@ -477,7 +529,10 @@ impl Clients {
         self.editable(client_id).await?;
         let db = self.pool.get().await?;
         Ok(db
-            .execute("UPDATE oidc_clients SET enabled = $2, updated_at = now() WHERE client_id = $1", &[&client_id, &enabled])
+            .execute(
+                "UPDATE oidc_clients SET enabled = $2, updated_at = now() WHERE client_id = $1",
+                &[&client_id, &enabled],
+            )
             .await?
             > 0)
     }
@@ -485,12 +540,19 @@ impl Clients {
     /// Declared clients are synced at boot and read-only in the UI. A client removed from the file
     /// is disabled rather than deleted, so its audit trail stays intact.
     pub async fn sync_file(&self, path: &Path, env: &HashMap<String, String>) -> Result<Vec<String>> {
-        let raw = tokio::fs::read_to_string(path).await.with_context(|| format!("can't read {}", path.display()))?;
+        let raw = tokio::fs::read_to_string(path)
+            .await
+            .with_context(|| format!("can't read {}", path.display()))?;
         let file: ClientsFile = serde_json::from_str(&raw).context("HANDSTAMP_CLIENTS_FILE is not valid JSON")?;
         let mut ids = Vec::new();
         for (i, entry) in file.clients.iter().enumerate() {
-            let def = ClientDefinition::parse(entry)
-                .map_err(|p| anyhow::anyhow!("HANDSTAMP_CLIENTS_FILE is invalid:\n  clients.{i}.{}: {}", p.field, p.message))?;
+            let def = ClientDefinition::parse(entry).map_err(|p| {
+                anyhow::anyhow!(
+                    "HANDSTAMP_CLIENTS_FILE is invalid:\n  clients.{i}.{}: {}",
+                    p.field,
+                    p.message
+                )
+            })?;
             let secret_env = entry.get("secretEnv").and_then(Value::as_str);
             if let Some(name) = secret_env
                 && !SECRET_ENV.is_match(name)
@@ -549,17 +611,38 @@ mod tests {
         assert!(redirect_uri_problem("http://app.localhost:1355/cb").is_none());
         assert!(redirect_uri_problem("http://127.0.0.1/cb").is_none());
         assert!(redirect_uri_problem("http://[::1]/cb").is_none());
-        assert!(redirect_uri_problem("http://app.example.com/cb").unwrap().contains("https"));
-        assert!(redirect_uri_problem("https://*.example.com/cb").unwrap().contains("Wildcards"));
-        assert!(redirect_uri_problem("https://app.example.com/cb#x").unwrap().contains("fragment"));
-        assert!(redirect_uri_problem("https://u:p@app.example.com/cb").unwrap().contains("credentials"));
+        assert!(
+            redirect_uri_problem("http://app.example.com/cb")
+                .unwrap()
+                .contains("https")
+        );
+        assert!(
+            redirect_uri_problem("https://*.example.com/cb")
+                .unwrap()
+                .contains("Wildcards")
+        );
+        assert!(
+            redirect_uri_problem("https://app.example.com/cb#x")
+                .unwrap()
+                .contains("fragment")
+        );
+        assert!(
+            redirect_uri_problem("https://u:p@app.example.com/cb")
+                .unwrap()
+                .contains("credentials")
+        );
         assert!(redirect_uri_problem("/cb").unwrap().contains("absolute"));
-        assert!(redirect_uri_problem("ftp://example.com/cb").unwrap().contains("Only https"));
+        assert!(
+            redirect_uri_problem("ftp://example.com/cb")
+                .unwrap()
+                .contains("Only https")
+        );
     }
 
     #[test]
     fn applies_defaults() {
-        let def = parse(json!({ "clientId": "app", "name": " App ", "redirectUris": ["https://a.example/cb"] })).unwrap();
+        let def =
+            parse(json!({ "clientId": "app", "name": " App ", "redirectUris": ["https://a.example/cb"] })).unwrap();
         assert_eq!(def.name, "App");
         assert_eq!(def.scopes, ["openid", "profile", "email"]);
         assert_eq!(def.token_endpoint_auth_method, "client_secret_basic");
@@ -570,12 +653,17 @@ mod tests {
     fn reports_the_first_problem_with_its_field() {
         let err = parse(json!({ "clientId": "A", "name": "x", "redirectUris": ["https://a.example/cb"] })).unwrap_err();
         assert_eq!(err.field, "clientId");
-        let err = parse(json!({ "clientId": "app", "name": "x", "redirectUris": ["http://evil.example/cb"] })).unwrap_err();
-        assert_eq!(err.field, "redirectUris.0");
         let err =
-            parse(json!({ "clientId": "app", "name": "x", "redirectUris": ["https://a.example/cb"], "scopes": ["email"] }))
-                .unwrap_err();
-        assert_eq!((err.field.as_str(), err.message.as_str()), ("scopes", "Scopes must include openid."));
+            parse(json!({ "clientId": "app", "name": "x", "redirectUris": ["http://evil.example/cb"] })).unwrap_err();
+        assert_eq!(err.field, "redirectUris.0");
+        let err = parse(
+            json!({ "clientId": "app", "name": "x", "redirectUris": ["https://a.example/cb"], "scopes": ["email"] }),
+        )
+        .unwrap_err();
+        assert_eq!(
+            (err.field.as_str(), err.message.as_str()),
+            ("scopes", "Scopes must include openid.")
+        );
         let err = parse(json!({
             "clientId": "app", "name": "x", "redirectUris": ["https://a.example/cb"],
             "tokenEndpointAuthMethod": "none", "requirePkce": false

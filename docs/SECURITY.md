@@ -18,12 +18,16 @@ Handstamp is the front door for every R.E.C. app, so a flaw in it is a flaw in a
 design choices below are the ones that matter most. The full list, with where each is enforced
 and tested, is the security checklist in [`PLAN.md` §4](PLAN.md#4-security-checklist).
 
-**No hand-rolled protocol.** Every OIDC endpoint is
-[`oidc-provider`](https://github.com/panva/node-oidc-provider); upstream sign-in uses
-[`openid-client`](https://github.com/panva/openid-client); passkeys use
-[SimpleWebAuthn](https://simplewebauthn.dev). These are pinned to exact versions. Each release
-passes the OpenID Foundation's Basic OP and Config OP conformance tests
-([`conformance/`](../conformance)).
+**A protocol held to the conformance suite.** The OpenID provider is Rust
+([`backend/`](../backend)), written to the behaviour of
+[`oidc-provider`](https://github.com/panva/node-oidc-provider) 9, which Handstamp ran on before
+([`RUST-PORT.md`](RUST-PORT.md)). It is not certified code from a third party, so it is held to
+the same bar instead: every release passes the OpenID Foundation's Basic OP and Config OP
+conformance tests ([`conformance/`](../conformance)) with the same short list of accepted gaps,
+and every flow has a black-box test ([`tests/`](../tests)). Upstream sign-in uses the
+[`openidconnect`](https://crates.io/crates/openidconnect) crate. Cryptography is
+[aws-lc-rs](https://github.com/aws/aws-lc-rs) (signing, signature checks) and RustCrypto
+(AES-GCM, HKDF); nothing is home-made below the protocol layer. Dependencies are locked.
 
 **No passwords.** People sign in with a passkey (user verification required, bound to the
 issuer's host, so a look-alike domain can't use it) or with an account they already have at
@@ -60,7 +64,8 @@ neutralises spreadsheet formulas.
 
 **Defence in depth.** Per-IP rate limits on sign-in, token and setup endpoints. A strict Content
 Security Policy with no inline script except one hashed theme snippet, `frame-ancestors 'none'`,
-HSTS. No open redirects: only `oidc-provider` redirects to apps, and only to registered URIs.
+HSTS. No open redirects: only the authorization and logout endpoints redirect to apps, and only to
+registered URIs (exact match). Absolute URLs come from the configured issuer, never the Host header.
 Outbound calls (back-channel logout) refuse private addresses unless an operator allows them.
 
 ## Threat model

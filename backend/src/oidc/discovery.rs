@@ -7,11 +7,7 @@ use axum::{
 };
 use serde_json::{Value, json};
 
-use crate::{
-    accounts::CLAIMS_SUPPORTED,
-    app::App,
-    http::Out,
-};
+use crate::{accounts::CLAIMS_SUPPORTED, app::App, http::Out};
 
 /// Every endpoint lives under the configured issuer. URLs are never built from the Host header,
 /// so a forged Host can't put someone else's endpoints in the document.

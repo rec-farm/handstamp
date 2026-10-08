@@ -25,7 +25,8 @@ pub struct Passkey {
     pub last_used_at: Option<DateTime<Utc>>,
 }
 
-const COLUMNS: &str = "id, user_id, credential_id, public_key, sign_count, transports, backed_up, name, created_at, last_used_at";
+const COLUMNS: &str =
+    "id, user_id, credential_id, public_key, sign_count, transports, backed_up, name, created_at, last_used_at";
 
 fn row(r: &tokio_postgres::Row) -> Passkey {
     Passkey {
@@ -84,7 +85,14 @@ impl Passkeys {
         db.execute(
             "INSERT INTO webauthn_challenges (purpose, binding, challenge, user_id, pending, expires_at) \
              VALUES ($1, $2, $3, $4, $5, now() + make_interval(secs => $6))",
-            &[&purpose, &binding, &challenge, &user_id, &pending, &(CHALLENGE_TTL_SECONDS as f64)],
+            &[
+                &purpose,
+                &binding,
+                &challenge,
+                &user_id,
+                &pending,
+                &(CHALLENGE_TTL_SECONDS as f64),
+            ],
         )
         .await?;
         Ok(())
@@ -101,13 +109,19 @@ impl Passkeys {
                 &[&challenge, &purpose, &binding],
             )
             .await?;
-        Ok(row.map(|r| Challenge { user_id: r.get(0), pending: r.get(1) }))
+        Ok(row.map(|r| Challenge {
+            user_id: r.get(0),
+            pending: r.get(1),
+        }))
     }
 
     pub async fn find_by_credential_id(&self, credential_id: &str) -> Result<Option<Passkey>> {
         let db = self.pool.get().await?;
         Ok(db
-            .query_opt(&format!("SELECT {COLUMNS} FROM passkeys WHERE credential_id = $1"), &[&credential_id])
+            .query_opt(
+                &format!("SELECT {COLUMNS} FROM passkeys WHERE credential_id = $1"),
+                &[&credential_id],
+            )
             .await?
             .as_ref()
             .map(row))
@@ -116,7 +130,10 @@ impl Passkeys {
     pub async fn list_for_user(&self, user: Uuid) -> Result<Vec<Passkey>> {
         let db = self.pool.get().await?;
         Ok(db
-            .query(&format!("SELECT {COLUMNS} FROM passkeys WHERE user_id = $1 ORDER BY created_at"), &[&user])
+            .query(
+                &format!("SELECT {COLUMNS} FROM passkeys WHERE user_id = $1 ORDER BY created_at"),
+                &[&user],
+            )
             .await?
             .iter()
             .map(row)
@@ -128,7 +145,10 @@ impl Passkeys {
             .list_for_user(user)
             .await?
             .into_iter()
-            .map(|p| Existing { credential_id: p.credential_id, transports: p.transports })
+            .map(|p| Existing {
+                credential_id: p.credential_id,
+                transports: p.transports,
+            })
             .collect())
     }
 
@@ -144,7 +164,13 @@ impl Passkeys {
 
     pub async fn rename(&self, user: Uuid, id: Uuid, name: &str) -> Result<bool> {
         let db = self.pool.get().await?;
-        Ok(db.execute("UPDATE passkeys SET name = $3 WHERE id = $1 AND user_id = $2", &[&id, &user, &name]).await? > 0)
+        Ok(db
+            .execute(
+                "UPDATE passkeys SET name = $3 WHERE id = $1 AND user_id = $2",
+                &[&id, &user, &name],
+            )
+            .await?
+            > 0)
     }
 
     /// Nobody can remove their last way in: passkeys and linked identities both count.
@@ -152,7 +178,12 @@ impl Passkeys {
         let mut db = self.pool.get().await?;
         let tx = db.transaction().await?;
         accounts::lock_user(&tx, user).await?;
-        let Some(target) = tx.query_opt("SELECT name FROM passkeys WHERE id = $1 AND user_id = $2", &[&id, &user]).await?
+        let Some(target) = tx
+            .query_opt(
+                "SELECT name FROM passkeys WHERE id = $1 AND user_id = $2",
+                &[&id, &user],
+            )
+            .await?
         else {
             return Ok(None);
         };
@@ -189,9 +220,20 @@ pub async fn add(db: &impl GenericClient, user: Uuid, passkey: &VerifiedRegistra
 pub fn clean_name(name: Option<&Value>, taken: &[String]) -> String {
     let trimmed: String = name
         .and_then(Value::as_str)
-        .map(|n| n.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(56).collect())
+        .map(|n| {
+            n.split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .chars()
+                .take(56)
+                .collect()
+        })
         .unwrap_or_default();
-    let base = if trimmed.is_empty() { "Passkey".to_string() } else { trimmed };
+    let base = if trimmed.is_empty() {
+        "Passkey".to_string()
+    } else {
+        trimmed
+    };
     // Two "Passkey on Mac"s are indistinguishable on the account page; number the newcomer.
     let mut candidate = base.clone();
     let mut n = 2;
@@ -223,7 +265,10 @@ mod tests {
     fn cleans_and_numbers_names() {
         assert_eq!(clean_name(Some(&json!("  Backup   key ")), &[]), "Backup key");
         assert_eq!(clean_name(None, &[]), "Passkey");
-        assert_eq!(clean_name(Some(&json!("Mac")), &["Mac".into(), "Mac 2".into()]), "Mac 3");
+        assert_eq!(
+            clean_name(Some(&json!("Mac")), &["Mac".into(), "Mac 2".into()]),
+            "Mac 3"
+        );
         assert_eq!(clean_name(Some(&json!("x".repeat(80))), &[]).len(), 56);
     }
 }

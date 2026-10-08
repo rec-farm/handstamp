@@ -48,7 +48,14 @@ impl Store {
         Self { pool }
     }
 
-    pub async fn save<T: Serialize>(&self, kind: &str, id: &str, value: &T, columns: Columns<'_>, exp: i64) -> Result<()> {
+    pub async fn save<T: Serialize>(
+        &self,
+        kind: &str,
+        id: &str,
+        value: &T,
+        columns: Columns<'_>,
+        exp: i64,
+    ) -> Result<()> {
         let db = self.pool.get().await?;
         save(&db, kind, id, value, columns, exp).await
     }
@@ -65,7 +72,9 @@ impl Store {
             .await?;
         Ok(row.and_then(|r| {
             let consumed = r.get(1);
-            serde_json::from_value(r.get(0)).ok().map(|value| Found { value, consumed })
+            serde_json::from_value(r.get(0))
+                .ok()
+                .map(|value| Found { value, consumed })
         }))
     }
 
@@ -95,7 +104,8 @@ impl Store {
 
     pub async fn destroy(&self, kind: &str, id: &str) -> Result<()> {
         let db = self.pool.get().await?;
-        db.execute("DELETE FROM oidc_payloads WHERE kind = $1 AND id = $2", &[&kind, &id]).await?;
+        db.execute("DELETE FROM oidc_payloads WHERE kind = $1 AND id = $2", &[&kind, &id])
+            .await?;
         Ok(())
     }
 
@@ -127,13 +137,21 @@ pub async fn save<T: Serialize>(
 }
 
 pub async fn revoke_grant(db: &impl GenericClient, grant_id: &str) -> Result<()> {
-    db.execute("DELETE FROM oidc_payloads WHERE grant_id = $1", &[&grant_id]).await?;
+    db.execute("DELETE FROM oidc_payloads WHERE grant_id = $1", &[&grant_id])
+        .await?;
     Ok(())
 }
 
 pub async fn delete_expired(pool: &Pool) -> Result<u64> {
     let db = pool.get().await?;
-    let mut removed = db.execute("DELETE FROM oidc_payloads WHERE expires_at < now()", &[]).await?;
-    removed += db.execute("DELETE FROM webauthn_challenges WHERE expires_at < now() - interval '1 day'", &[]).await?;
+    let mut removed = db
+        .execute("DELETE FROM oidc_payloads WHERE expires_at < now()", &[])
+        .await?;
+    removed += db
+        .execute(
+            "DELETE FROM webauthn_challenges WHERE expires_at < now() - interval '1 day'",
+            &[],
+        )
+        .await?;
     Ok(removed)
 }

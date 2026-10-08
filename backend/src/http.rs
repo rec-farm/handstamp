@@ -69,7 +69,9 @@ impl Req {
     }
 
     pub fn query_pairs(&self) -> Vec<(String, String)> {
-        url::form_urlencoded::parse(self.query.as_deref().unwrap_or_default().as_bytes()).into_owned().collect()
+        url::form_urlencoded::parse(self.query.as_deref().unwrap_or_default().as_bytes())
+            .into_owned()
+            .collect()
     }
 
     pub fn query_param(&self, name: &str) -> Option<String> {
@@ -77,7 +79,8 @@ impl Req {
     }
 
     pub fn is_form(&self) -> bool {
-        self.header("content-type").is_some_and(|ct| ct.starts_with("application/x-www-form-urlencoded"))
+        self.header("content-type")
+            .is_some_and(|ct| ct.starts_with("application/x-www-form-urlencoded"))
     }
 
     pub fn form_pairs(&self) -> Vec<(String, String)> {
@@ -158,7 +161,9 @@ pub fn parse_cookies(headers: &HeaderMap) -> HashMap<String, String> {
     for value in headers.get_all(header::COOKIE).iter().filter_map(|v| v.to_str().ok()) {
         for pair in value.split(';') {
             if let Some((name, value)) = pair.trim().split_once('=') {
-                cookies.entry(name.trim().to_string()).or_insert_with(|| value.trim().to_string());
+                cookies
+                    .entry(name.trim().to_string())
+                    .or_insert_with(|| value.trim().to_string());
             }
         }
     }
@@ -181,7 +186,12 @@ pub struct CookieOptions {
 
 impl CookieOptions {
     pub fn lax(path: impl Into<String>, secure: bool, max_age: Option<i64>) -> Self {
-        Self { path: path.into(), max_age, same_site: SameSite::Lax, secure }
+        Self {
+            path: path.into(),
+            max_age,
+            same_site: SameSite::Lax,
+            secure,
+        }
     }
 }
 
@@ -190,7 +200,10 @@ pub fn set_cookie(name: &str, value: &str, options: &CookieOptions) -> String {
     let mut cookie = format!("{name}={value}; Path={}", options.path);
     if let Some(max_age) = options.max_age {
         let expires = chrono::Utc::now() + chrono::Duration::seconds(max_age);
-        cookie.push_str(&format!("; Max-Age={max_age}; Expires={}", expires.format("%a, %d %b %Y %H:%M:%S GMT")));
+        cookie.push_str(&format!(
+            "; Max-Age={max_age}; Expires={}",
+            expires.format("%a, %d %b %Y %H:%M:%S GMT")
+        ));
     }
     cookie.push_str("; HttpOnly");
     cookie.push_str(match options.same_site {
@@ -204,8 +217,10 @@ pub fn set_cookie(name: &str, value: &str, options: &CookieOptions) -> String {
 }
 
 pub fn clear_cookie(name: &str, options: &CookieOptions) -> String {
-    let mut cookie =
-        format!("{name}=; Path={}; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly", options.path);
+    let mut cookie = format!(
+        "{name}=; Path={}; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly",
+        options.path
+    );
     cookie.push_str(match options.same_site {
         SameSite::Lax => "; SameSite=Lax",
         SameSite::None => "; SameSite=None",
@@ -226,19 +241,30 @@ pub struct Out {
 
 impl Out {
     pub fn new(status: StatusCode) -> Self {
-        Self { status, headers: HeaderMap::new(), cookies: Vec::new(), body: Body::empty() }
+        Self {
+            status,
+            headers: HeaderMap::new(),
+            cookies: Vec::new(),
+            body: Body::empty(),
+        }
     }
 
     pub fn json(status: StatusCode, value: &Value) -> Self {
         let mut out = Self::new(status);
-        out.headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json; charset=utf-8"));
+        out.headers.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json; charset=utf-8"),
+        );
         out.body = Body::from(value.to_string());
         out
     }
 
     pub fn html(status: StatusCode, html: String) -> Self {
         let mut out = Self::new(status);
-        out.headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
+        out.headers.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/html; charset=utf-8"),
+        );
         out.body = Body::from(html);
         out
     }
@@ -303,7 +329,13 @@ pub struct ApiError {
 
 impl ApiError {
     pub fn new(status: StatusCode, code: &'static str, message: impl Into<String>) -> Self {
-        Self { status, code, message: message.into(), extra: json!({}), cookies: Vec::new() }
+        Self {
+            status,
+            code,
+            message: message.into(),
+            extra: json!({}),
+            cookies: Vec::new(),
+        }
     }
 
     pub fn with(mut self, extra: Value) -> Self {
@@ -320,11 +352,19 @@ impl ApiError {
     }
 
     pub fn rate_limited() -> Self {
-        Self::new(StatusCode::TOO_MANY_REQUESTS, "rate_limited", "Too many attempts. Wait a minute and try again.")
+        Self::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate_limited",
+            "Too many attempts. Wait a minute and try again.",
+        )
     }
 
     pub fn not_found(what: &str) -> Self {
-        Self::new(StatusCode::NOT_FOUND, "not_found", format!("That {what} no longer exists."))
+        Self::new(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            format!("That {what} no longer exists."),
+        )
     }
 
     pub fn csrf() -> Self {
@@ -392,32 +432,63 @@ impl Limit {
     }
 }
 
+type WindowKey = (Limit, String, IpAddr);
+
 /// Fixed windows per (route, client IP), in memory: one process per instance. Like
 /// @fastify/rate-limit, each route template has its own budget.
 pub struct RateLimiter {
     scale: f64,
-    windows: Mutex<HashMap<(Limit, String, IpAddr), (Instant, u32)>>,
+    windows: Mutex<HashMap<WindowKey, (Instant, u32)>>,
 }
 
 /// Words that appear in rate-limited routes. Anything else in a path (IDs, slugs, junk) collapses
 /// to ':' so the key space stays small however many distinct paths a client sends.
 const ROUTE_WORDS: [&str; 22] = [
-    "interaction", "auth", "details", "dev-login", "consent", "abort", "passkey", "passkeys", "options", "verify",
-    "setup", "enroll", "upstream", "complete", "callback", "token", "api", "me", "identities", "link", "console", "login",
+    "interaction",
+    "auth",
+    "details",
+    "dev-login",
+    "consent",
+    "abort",
+    "passkey",
+    "passkeys",
+    "options",
+    "verify",
+    "setup",
+    "enroll",
+    "upstream",
+    "complete",
+    "callback",
+    "token",
+    "api",
+    "me",
+    "identities",
+    "link",
+    "console",
+    "login",
 ];
 
 /// The route template for a path: IDs and other parameters don't make a new bucket.
 fn route_key(path: &str) -> String {
     path.split('/')
         .take(8)
-        .map(|segment| if segment.is_empty() || ROUTE_WORDS.contains(&segment) { segment } else { ":" })
+        .map(|segment| {
+            if segment.is_empty() || ROUTE_WORDS.contains(&segment) {
+                segment
+            } else {
+                ":"
+            }
+        })
         .collect::<Vec<_>>()
         .join("/")
 }
 
 impl RateLimiter {
     pub fn new(scale: f64) -> Arc<Self> {
-        Arc::new(Self { scale, windows: Mutex::new(HashMap::new()) })
+        Arc::new(Self {
+            scale,
+            windows: Mutex::new(HashMap::new()),
+        })
     }
 
     /// True when this request is within budget.
@@ -437,7 +508,11 @@ impl RateLimiter {
     }
 
     pub fn guard(&self, limit: Limit, path: &str, ip: IpAddr) -> Result<(), ApiError> {
-        if self.check(limit, path, ip) { Ok(()) } else { Err(ApiError::rate_limited()) }
+        if self.check(limit, path, ip) {
+            Ok(())
+        } else {
+            Err(ApiError::rate_limited())
+        }
     }
 }
 
@@ -457,11 +532,20 @@ mod tests {
         let peer: IpAddr = "10.0.0.2".parse().unwrap();
         let h = headers("1.2.3.4");
         assert_eq!(client_ip(&TrustProxy::Off, peer, &h), peer);
-        assert_eq!(client_ip(&parse_trust_proxy("10.0.0.0/8").unwrap(), peer, &h), "1.2.3.4".parse::<IpAddr>().unwrap());
-        assert_eq!(client_ip(&parse_trust_proxy("1").unwrap(), peer, &h), "1.2.3.4".parse::<IpAddr>().unwrap());
+        assert_eq!(
+            client_ip(&parse_trust_proxy("10.0.0.0/8").unwrap(), peer, &h),
+            "1.2.3.4".parse::<IpAddr>().unwrap()
+        );
+        assert_eq!(
+            client_ip(&parse_trust_proxy("1").unwrap(), peer, &h),
+            "1.2.3.4".parse::<IpAddr>().unwrap()
+        );
         // An untrusted peer can't claim a forwarded address.
         let stranger: IpAddr = "8.8.8.8".parse().unwrap();
-        assert_eq!(client_ip(&parse_trust_proxy("10.0.0.0/8").unwrap(), stranger, &h), stranger);
+        assert_eq!(
+            client_ip(&parse_trust_proxy("10.0.0.0/8").unwrap(), stranger, &h),
+            stranger
+        );
         // A spoofed left-most entry doesn't win over the first untrusted hop.
         let spoofed = headers("6.6.6.6, 1.2.3.4");
         assert_eq!(
@@ -474,8 +558,13 @@ mod tests {
     fn rate_limits_per_ip() {
         let limiter = RateLimiter::new(1.0);
         let ip: IpAddr = "1.1.1.1".parse().unwrap();
-        let allowed = (0..35).filter(|i| limiter.check(Limit::Interaction, &format!("/interaction/{i}/details"), ip)).count();
-        assert_eq!(route_key("/interaction/abc/upstream/anything"), "/interaction/:/upstream/:");
+        let allowed = (0..35)
+            .filter(|i| limiter.check(Limit::Interaction, &format!("/interaction/{i}/details"), ip))
+            .count();
+        assert_eq!(
+            route_key("/interaction/abc/upstream/anything"),
+            "/interaction/:/upstream/:"
+        );
         assert_eq!(allowed, 30);
         assert!(limiter.check(Limit::Interaction, "/interaction/x/details", "2.2.2.2".parse().unwrap()));
         assert!(limiter.check(Limit::Interaction, "/interaction/x/consent", ip));

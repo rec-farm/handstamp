@@ -12,7 +12,9 @@ use axum::{
 use serde_json::{Value, json};
 
 use super::{
-    OidcError, OidcResult, authorize::verify_id_token_hint, form_post,
+    OidcError, OidcResult,
+    authorize::verify_id_token_hint,
+    form_post,
     models::{LogoutState, Session},
     single_params,
     store::{SESSION, now, token_id},
@@ -62,19 +64,24 @@ pub fn private(ip: IpAddr) -> bool {
                 || (s[0] == 0x64 && s[1] == 0xff9b)
                 || (s[0] == 0x2001 && s[1] == 0x0db8)
                 || v6.to_ipv4_mapped().is_some_and(|v4| private(IpAddr::V4(v4)))
-                || (s[..6].iter().all(|x| *x == 0) && private(IpAddr::V4(std::net::Ipv4Addr::new(
-                    (s[6] >> 8) as u8,
-                    s[6] as u8,
-                    (s[7] >> 8) as u8,
-                    s[7] as u8,
-                ))))
+                || (s[..6].iter().all(|x| *x == 0)
+                    && private(IpAddr::V4(std::net::Ipv4Addr::new(
+                        (s[6] >> 8) as u8,
+                        s[6] as u8,
+                        (s[7] >> 8) as u8,
+                        s[7] as u8,
+                    ))))
         }
     }
 }
 
 async fn send_backchannel(app: &App, client_id: &str, account_id: &str, sid: &str) -> Result<()> {
-    let Some(client) = app.clients.load(client_id).await? else { return Ok(()) };
-    let Some(uri) = client.backchannel_logout_uri.clone() else { return Ok(()) };
+    let Some(client) = app.clients.load(client_id).await? else {
+        return Ok(());
+    };
+    let Some(uri) = client.backchannel_logout_uri.clone() else {
+        return Ok(());
+    };
     let url = url::Url::parse(&uri)?;
     // Resolve once, check every address, then connect to exactly the address that was checked, so
     // a DNS answer that changes between the check and the connection (rebinding) can't slip
@@ -85,7 +92,9 @@ async fn send_backchannel(app: &App, client_id: &str, account_id: &str, sid: &st
         Ok(ip) => vec![(ip, port).into()],
         Err(_) => tokio::net::lookup_host((host.as_str(), port)).await?.collect(),
     };
-    let Some(pinned) = addrs.first().copied() else { bail!("{host} did not resolve") };
+    let Some(pinned) = addrs.first().copied() else {
+        bail!("{host} did not resolve")
+    };
     if !app.config.allow_private_networks && addrs.iter().any(|a| private(a.ip())) {
         bail!("refusing to call a private network address (set ALLOW_PRIVATE_NETWORKS=1 to allow)");
     }
@@ -109,7 +118,9 @@ async fn send_backchannel(app: &App, client_id: &str, account_id: &str, sid: &st
             "events": { "http://schemas.openid.net/event/backchannel-logout": {} },
         }),
     )?;
-    let body = url::form_urlencoded::Serializer::new(String::new()).append_pair("logout_token", &token).finish();
+    let body = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("logout_token", &token)
+        .finish();
     let response = http
         .post(url)
         .header("content-type", "application/x-www-form-urlencoded")
@@ -142,10 +153,21 @@ pub async fn end_session(app: &App, session: &Session, _all: bool) -> Result<()>
     Ok(())
 }
 
-const END_PARAMS: [&str; 6] = ["id_token_hint", "post_logout_redirect_uri", "state", "ui_locales", "client_id", "logout_hint"];
+const END_PARAMS: [&str; 6] = [
+    "id_token_hint",
+    "post_logout_redirect_uri",
+    "state",
+    "ui_locales",
+    "client_id",
+    "logout_hint",
+];
 
 fn pairs(req: &Req) -> Vec<(String, String)> {
-    if req.method == Method::POST { req.form_pairs() } else { req.query_pairs() }
+    if req.method == Method::POST {
+        req.form_pairs()
+    } else {
+        req.query_pairs()
+    }
 }
 
 fn decode_payload(jwt: &str) -> Option<Value> {
@@ -174,17 +196,22 @@ async fn end_inner(app: &App, req: &Req, session: &mut Session) -> OidcResult<Ou
     let mut params = single_params(pairs(req), Some(&END_PARAMS))?;
     let mut client = None;
     if let Some(hint) = params.get("id_token_hint").cloned() {
-        let payload = decode_payload(&hint).ok_or_else(|| OidcError::invalid_request("could not decode id_token_hint"))?;
+        let payload =
+            decode_payload(&hint).ok_or_else(|| OidcError::invalid_request("could not decode id_token_hint"))?;
         let aud = match &payload["aud"] {
             Value::String(aud) => aud.clone(),
             Value::Array(auds) => auds.first().and_then(Value::as_str).unwrap_or_default().to_string(),
             _ => String::new(),
         };
         if params.get("client_id").is_some_and(|id| *id != aud) {
-            return Err(OidcError::invalid_request("client_id does not match the provided id_token_hint"));
+            return Err(OidcError::invalid_request(
+                "client_id does not match the provided id_token_hint",
+            ));
         }
         let found = app.clients.load(&aud).await?;
-        let Some(found) = found else { return Err(OidcError::invalid_client("unrecognized id_token_hint audience")) };
+        let Some(found) = found else {
+            return Err(OidcError::invalid_client("unrecognized id_token_hint audience"));
+        };
         verify_id_token_hint(app, &hint, &found.client_id)
             .await
             .map_err(|_| OidcError::invalid_request("could not validate id_token_hint"))?;
@@ -225,8 +252,22 @@ async fn end_inner(app: &App, req: &Req, session: &mut Session) -> OidcResult<Ou
         );
         return Ok(Out::html(StatusCode::OK, html));
     }
-    let name = client.as_ref().map(|c| c.display_name().to_string()).unwrap_or_default();
-    let html = app.shell.render("/logout", &[("view", "logout"), ("xsrf", &secret), ("action", &action), ("client", &name)]).await;
+    let name = client
+        .as_ref()
+        .map(|c| c.display_name().to_string())
+        .unwrap_or_default();
+    let html = app
+        .shell
+        .render(
+            "/logout",
+            &[
+                ("view", "logout"),
+                ("xsrf", &secret),
+                ("action", &action),
+                ("client", &name),
+            ],
+        )
+        .await;
     Ok(Out::html(StatusCode::OK, html))
 }
 
@@ -296,7 +337,8 @@ async fn confirm_inner(app: &App, req: &Req, session: &mut Session) -> OidcResul
     let origin = &app.issuer;
     let location = match &state.post_logout_redirect_uri {
         Some(uri) => {
-            let mut url = url::Url::parse(uri).map_err(|_| OidcError::invalid_request("post_logout_redirect_uri is invalid"))?;
+            let mut url =
+                url::Url::parse(uri).map_err(|_| OidcError::invalid_request("post_logout_redirect_uri is invalid"))?;
             if let Some(s) = &state.state {
                 url.query_pairs_mut().append_pair("state", s);
             }
@@ -305,7 +347,10 @@ async fn confirm_inner(app: &App, req: &Req, session: &mut Session) -> OidcResul
         None => {
             let mut url = format!("{origin}/session/end/success");
             if !logout_all && let Some(client_id) = &state.client_id {
-                url.push_str(&format!("?client_id={}", url::form_urlencoded::byte_serialize(client_id.as_bytes()).collect::<String>()));
+                url.push_str(&format!(
+                    "?client_id={}",
+                    url::form_urlencoded::byte_serialize(client_id.as_bytes()).collect::<String>()
+                ));
             }
             url
         }
@@ -318,12 +363,20 @@ pub async fn success(State(app): State<App>, req: Req) -> Response {
     let name = match req.query_param("client_id") {
         Some(id) => match app.clients.load(&id).await {
             Ok(Some(client)) => client.display_name().to_string(),
-            Ok(None) => return app.render_error(&OidcError::invalid_client("client is invalid")).await.into_response(),
+            Ok(None) => {
+                return app
+                    .render_error(&OidcError::invalid_client("client is invalid"))
+                    .await
+                    .into_response();
+            }
             Err(e) => return app.render_error(&e.into()).await.into_response(),
         },
         None => String::new(),
     };
-    let html = app.shell.render("/signed-out", &[("view", "signed-out"), ("client", &name)]).await;
+    let html = app
+        .shell
+        .render("/signed-out", &[("view", "signed-out"), ("client", &name)])
+        .await;
     Out::html(StatusCode::OK, html).no_store().into_response()
 }
 
@@ -338,8 +391,21 @@ mod tests {
     #[test]
     fn refuses_non_public_addresses() {
         for ip in [
-            "127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.1.2.3",
-            "224.0.0.1", "::1", "fd00::1", "fe80::1", "::ffff:10.0.0.1", "64:ff9b::a00:1", "2002:a00:1::", "::10.0.0.1",
+            "127.0.0.1",
+            "10.1.2.3",
+            "172.16.0.1",
+            "192.168.1.1",
+            "169.254.169.254",
+            "100.64.0.1",
+            "0.1.2.3",
+            "224.0.0.1",
+            "::1",
+            "fd00::1",
+            "fe80::1",
+            "::ffff:10.0.0.1",
+            "64:ff9b::a00:1",
+            "2002:a00:1::",
+            "::10.0.0.1",
         ] {
             assert!(private(ip.parse().unwrap()), "{ip}");
         }

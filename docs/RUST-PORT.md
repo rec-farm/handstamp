@@ -1,64 +1,54 @@
 # Rust port
 
-> Status: **spike (2026-10-05).** `backend/` boots on the same database as the Node server and serves health, discovery, JWKS and the SPA. Every OIDC and API endpoint answers `501`. The Node image (`Dockerfile`) is still the only deployable Handstamp.
+> Status: **done (2026-10-08).** The Node server (Fastify, `oidc-provider`, Drizzle) is gone. `backend/` is the whole server and CLI: one binary, 30 MB as an image. See PLAN R20.
 
-Paramtune moved its backend to Rust (axum). This is the plan for doing the same here without giving up what makes Handstamp trustworthy: certified protocol behavior and one database that either runtime can run on.
+Paramtune moved its backend to Rust. Handstamp followed, all the way: the OpenID provider itself is now Rust. That was the hard part, because Paramtune is an OIDC _client_ (the `openidconnect` crate does the work) while Handstamp is the _provider_, and Rust has no certified provider library comparable to `oidc-provider`. So the port is written to `oidc-provider` 9's behaviour, as Handstamp configured it, and held to the same evidence that made the Node server trustworthy.
 
-## Why this is a separate track
+## The bar it cleared
 
-Paramtune is an OIDC _client_, and the `openidconnect` crate covers that. Handstamp is the _provider_. Rust has no maintained, OpenID-certified provider library comparable to `oidc-provider`, so porting means writing `/auth`, `/token`, PKCE, refresh rotation, `/session/end`, back-channel logout and key rotation ourselves. CLAUDE.md forbids that today ("never hand-roll the protocol"). PLAN R19 keeps production on Node. The port can replace it only after it passes the gates below, and the owner then changes the hard rule on purpose.
+- **OpenID conformance**: `./conformance/run.sh full` against the Rust image: Config OP and the full Basic OP plan, 26 passed, 4 for review (screenshots), 4 skipped, 2 warnings. Identical to Node, with no change to `conformance/expected-*.json`.
+- **Flow tests**: the 64 integration tests that drove the Node server (OIDC, passkeys, upstream sign-in, admin) now start the `handstamp` binary and talk to it over HTTP (`tests/`). The only test logic that changed: the two checks that faked the clock in-process for the 5-minute step-up window are now a Rust unit test (`console::tests::step_up_window_is_five_minutes`).
+- **Browser tests**: `pnpm e2e` (claim, passkeys, sign-in to an app, sign out everywhere, admin) in Chromium with a virtual authenticator.
+- **Security checklist**: every item in PLAN §4 points at Rust code and a test.
+- **Existing data**: the schema is the one Node used (plus migration 005). Signing keys, client and upstream secrets open with the same HKDF + AES-256-GCM envelope (a unit test opens a value Node sealed), and the dev database Node created ran under the Rust server unchanged.
 
-## What the spike proves
+## Map
 
-| Area               | Rust (`backend/src`)                                                                               | Checked by                                               |
-| ------------------ | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Migrations         | Embeds `packages/db/migrations` at build time; same `handstamp_migrations` table and advisory lock | `rust-parity.test.ts`                                    |
-| Sealed secrets     | HKDF-SHA256 per purpose + AES-256-GCM, same layout and AAD as `envelope.ts`                        | `crypto.rs` tests open a value sealed by Node            |
-| Signing keys       | First-boot RS256 key, RFC 7638 `kid`, sealed private JWK; opens keys Node wrote                    | `keys.rs` tests, `rust-parity.test.ts` (both directions) |
-| Discovery and JWKS | Same metadata; endpoint URLs follow the request like Koa (`TRUST_PROXY` → `X-Forwarded-*`)         | `rust-parity.test.ts` compares the documents             |
-| SPA shell          | `UI_PATHS`, `/assets` immutable caching, the same CSP with inline-script hashes, base headers      | `rust-parity.test.ts` compares the CSP; `web.rs` tests   |
-| Health             | `/healthz`, `/readyz` (503 without the database)                                                   | Container smoke test                                     |
+| Concern                                       | Node                                        | Rust (`backend/src`)                                               |
+| --------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------ |
+| HTTP, headers, rate limits                    | Fastify, `@fastify/rate-limit`              | axum, `app.rs`, `http.rs`                                          |
+| Authorization endpoint, interactions, consent | `oidc-provider`                             | `oidc/authorize.rs`, `interaction.rs`                              |
+| Token, userinfo, introspection, revocation    | `oidc-provider`                             | `oidc/token.rs`                                                    |
+| Logout, back-channel logout                   | `oidc-provider`                             | `oidc/logout.rs`                                                   |
+| Protocol storage                              | adapter over `oidc_payloads`                | `oidc/store.rs`, same table                                        |
+| Signing keys                                  | `node:crypto` + `jose`                      | `keys.rs`, aws-lc-rs                                               |
+| Passkeys                                      | SimpleWebAuthn                              | `webauthn.rs` (CBOR via ciborium, signatures via aws-lc-rs)        |
+| Upstream sign-in                              | `openid-client`                             | `upstream/`, `openidconnect` crate (GitHub by hand: plain OAuth 2) |
+| Console sign-in                               | `openid-client` against itself via `inject` | `console.rs`, code exchange in-process                             |
+| Database                                      | Drizzle + node-postgres                     | tokio-postgres + deadpool, TLS via rustls                          |
+| CLI                                           | `tsx src/cli.ts`                            | `handstamp <command>` (same binary)                                |
 
-Measured on the same machine against an empty database:
+## Where behaviour differs from Node, on purpose
 
-|                   | Node (`Dockerfile`) | Rust spike (`Dockerfile.rust`) |
-| ----------------- | ------------------- | ------------------------------ |
-| Image             | 205 MB              | 21 MB (2.6 MB binary)          |
-| Ready (`/readyz`) | 0.48 s              | 0.37 s, including RSA keygen   |
-| Memory after boot | ~103 MiB            | ~1.2 MiB                       |
-
-The spike does almost nothing yet, so its memory figure is a floor, not a forecast.
-
-## Still on Node
-
-Port in this order. Each step lands with its tests, and every protocol step must keep the conformance suite green.
-
-1. **Storage for protocol state**: the `oidc_payloads` adapter (sessions, grants, codes, tokens, interactions), cookie keys and their rotation, and the key-lifecycle scheduler (stage, promote, retire) under the same advisory lock.
-2. **Clients**: the declared clients file, the `handstamp-console` client (HKDF-derived secret), secret verification for `client_secret_basic` and `client_secret_post`.
-3. **Authorization code flow**: `/auth` (GET and POST), interactions, consent and first-party skip, PKCE S256, `prompt`, `max_age`, `id_token_hint`, `claims`, `iss` in the response, `form_post`.
-4. **Tokens**: `/token` (code and refresh, with rotation and reuse detection), ID token and access token signing, `/me`, introspection, revocation.
-5. **Logout**: `/session/end` with its confirm page, back-channel logout (private networks refused unless `ALLOW_PRIVATE_NETWORKS`).
-6. **Interaction API**: passkeys (WebAuthn via `webauthn-rs`), enrollment, setup claim, recovery, upstream sign-in (via `openidconnect`), the dev test user.
-7. **Console API**: `/api/me/*`, `/api/admin/*` (including the audit CSV), audit writes.
-8. **Cross-cutting**: rate limits, log redaction (S9), cookies (`__Host-` and `__Secure-`), CSRF, conformance mode, the `handstamp` CLI, Postgres TLS (the spike connects without TLS).
-
-Crates: axum and tokio, as in Paramtune; `tokio-postgres` + `deadpool-postgres`; `aes-gcm`, `hkdf` and `sha2` for the envelope. `rsa` generates keys only. For signing, prefer `aws-lc-rs` over `rsa` because of RUSTSEC-2023-0071 (Marvin). `webauthn-rs` for passkeys, `openidconnect` for upstream IdPs.
-
-## Gates before Rust replaces Node
-
-- [ ] `./conformance/run.sh full` passes against the `Dockerfile.rust` image, with no new entries in `conformance/expected-*.json`.
-- [ ] `pnpm e2e` passes against the Rust server (claim, passkey sign-in, consent, logout, admin).
-- [ ] Rollback is safe: Node and Rust run on one database in both directions for every table either one writes (`rust-parity.test.ts` grows with the port).
-- [ ] Every security requirement in PLAN §4 (S1–S20) maps to a Rust test.
-- [ ] The owner updates the CLAUDE.md hard rule and PLAN R19 in the same PR that switches `Dockerfile`.
+- **URLs come from the issuer.** Discovery, interaction redirects and logout actions use the configured issuer. `oidc-provider` built them from the request's Host header.
+- **Codes, tokens and session IDs are stored hashed** (SHA-256), not as their value. Session cookies are 256 random bits, so they need no signing key; `cookie_keys` is no longer used.
+- **Protocol state kinds are lowercase** (`session`, `grant`, …). Rows Node left behind are never read and expire: switching signs everyone out once and drops issued refresh tokens. Nothing else is lost.
+- **`auth_time` is always in the ID token**, not only when requested. OIDC allows it, and apps that check it get it.
+- **Back-channel logout** connects to exactly the address it checked (no DNS rebinding) and refuses more non-public ranges (CGNAT, multicast, NAT64, 6to4, IPv4-compatible IPv6).
+- **Rate limits** are per route and client IP, with route keys drawn from a fixed vocabulary so random paths can't grow the table.
+- **Migration 005**: a group an app requires can't be deleted from under it (`ON DELETE RESTRICT`). The admin API already refused; now the database does too.
+- **CSV export** also neutralises cells starting with a tab or CR. **Recovery through an upstream provider** checks the link was really consumed, so two tabs can't both use it. **Admin-entered GitHub API URLs** must be https (or loopback).
+- **Postgres TLS**: used when the server offers it, required with `?sslmode=require`, certificates checked against the Mozilla roots.
+- **Logs** are JSON lines from `tracing` instead of pino; URLs are still logged by path only.
+- A few validation messages that came from zod's defaults are now written out.
 
 ## Working on it
 
 ```sh
 pnpm backend:check   # cargo fmt --check + clippy -D warnings
-pnpm backend:test    # cargo test, release build, then the Node/Rust parity test (needs the dev Postgres)
-pnpm backend:build   # backend/target/release/handstamp-server
-docker build -f Dockerfile.rust -t handstamp:rust .
+pnpm test            # Rust unit tests, then the flow tests against a debug build
+pnpm e2e             # the real UI in Chromium
+./conformance/run.sh full
 ```
 
-The binary reads the same environment as the Node server (`HANDSTAMP_ISSUER`, `DATABASE_URL`, `HANDSTAMP_SECRET_KEY`, `HOST`, `PORT`, `TRUST_PROXY`), plus `HANDSTAMP_WEB_DIST` (default `../apps/web/dist`).
+Every protocol change keeps the full conformance run green with no new accepted gaps, and lands with a flow test (CLAUDE.md).

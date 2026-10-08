@@ -20,7 +20,7 @@ use crate::{
     audit::{Actor, Entry, ip_prefix},
     clients::{ClientDefinition, GROUP_SLUG, ReadOnly as ReadOnlyClient},
     console::{Need, Signed},
-    db::{iso, iso_opt, is_unique_violation},
+    db::{is_unique_violation, iso, iso_opt},
     enrollment::{INVITE_DAYS, RECOVERY_MINUTES},
     http::{ApiError, ApiResult, Out, Req},
     passkeys::LastMethod,
@@ -46,7 +46,10 @@ fn conflict(code: &'static str, message: impl Into<String>) -> ApiError {
 }
 
 fn read_only(what: &str, where_: &str) -> ApiError {
-    conflict("read_only", format!("This {what} comes from {where_}, so it can only be changed there."))
+    conflict(
+        "read_only",
+        format!("This {what} comes from {where_}, so it can only be changed there."),
+    )
 }
 
 fn id(raw: &str, what: &str) -> ApiResult<Uuid> {
@@ -54,15 +57,32 @@ fn id(raw: &str, what: &str) -> ApiResult<Uuid> {
 }
 
 async fn read(app: &App, req: &Req) -> ApiResult<Signed> {
-    app.signed_in(req, Need { admin: true, ..Default::default() }).await
+    app.signed_in(
+        req,
+        Need {
+            admin: true,
+            ..Default::default()
+        },
+    )
+    .await
 }
 
 async fn write(app: &App, req: &Req) -> ApiResult<Signed> {
-    app.signed_in(req, Need { admin: true, write: true, step_up: true }).await
+    app.signed_in(
+        req,
+        Need {
+            admin: true,
+            write: true,
+            step_up: true,
+        },
+    )
+    .await
 }
 
 fn entry<'a>(req: &'a Req, admin: Uuid, action: &'a str) -> Entry<'a> {
-    Entry::new(action, Actor::Admin).by(Some(admin)).from(ip_prefix(Some(req.ip)), req.user_agent())
+    Entry::new(action, Actor::Admin)
+        .by(Some(admin))
+        .from(ip_prefix(Some(req.ip)), req.user_agent())
 }
 
 fn ok(value: Value) -> ApiResult<Out> {
@@ -92,7 +112,11 @@ fn strings(value: &Value, key: &str) -> Result<Vec<String>, ApiError> {
         None | Some(Value::Null) => Ok(vec![]),
         Some(Value::Array(items)) => items
             .iter()
-            .map(|v| v.as_str().map(str::to_string).ok_or_else(|| invalid(key, "Some of the details sent were not valid.")))
+            .map(|v| {
+                v.as_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| invalid(key, "Some of the details sent were not valid."))
+            })
             .collect(),
         Some(_) => Err(invalid(key, "Some of the details sent were not valid.")),
     }
@@ -125,7 +149,12 @@ pub fn parse_user_patch(body: &Value) -> Result<UserPatch, ApiError> {
         Some(Value::String(s)) if s == "active" || s == "disabled" => Some(s.clone()),
         _ => return Err(invalid("status", "Use active or disabled.")),
     };
-    Ok(UserPatch { display_name, email, is_admin, status })
+    Ok(UserPatch {
+        display_name,
+        email,
+        is_admin,
+        status,
+    })
 }
 
 pub struct GroupInput {
@@ -137,7 +166,10 @@ pub struct GroupInput {
 pub fn parse_group(body: &Value) -> Result<GroupInput, ApiError> {
     let slug = trimmed(body, "slug")?.unwrap_or_default();
     if !GROUP_SLUG.is_match(&slug) {
-        return Err(invalid("slug", "Use lowercase letters, digits, dots, dashes, colons or underscores."));
+        return Err(invalid(
+            "slug",
+            "Use lowercase letters, digits, dots, dashes, colons or underscores.",
+        ));
     }
     let name = trimmed(body, "name")?.unwrap_or_default();
     if name.is_empty() {
@@ -150,7 +182,11 @@ pub fn parse_group(body: &Value) -> Result<GroupInput, ApiError> {
     if description.chars().count() > 280 {
         return Err(invalid("description", "Use at most 280 characters."));
     }
-    Ok(GroupInput { slug, name, description })
+    Ok(GroupInput {
+        slug,
+        name,
+        description,
+    })
 }
 
 pub fn parse_provider(body: &Value) -> Result<Seed, ApiError> {
@@ -180,15 +216,24 @@ pub fn parse_provider(body: &Value) -> Result<Seed, ApiError> {
     };
     let scopes = strings(body, "scopes")?;
     let allow_signup = boolean(body, "allowSignup")?.unwrap_or(false);
-    let allowed_email_domains: Vec<String> =
-        strings(body, "allowedEmailDomains")?.iter().map(|d| d.trim().to_lowercase()).collect();
-    let github_allowed_orgs: Vec<String> = strings(body, "githubAllowedOrgs")?.iter().map(|o| o.trim().to_string()).collect();
+    let allowed_email_domains: Vec<String> = strings(body, "allowedEmailDomains")?
+        .iter()
+        .map(|d| d.trim().to_lowercase())
+        .collect();
+    let github_allowed_orgs: Vec<String> = strings(body, "githubAllowedOrgs")?
+        .iter()
+        .map(|o| o.trim().to_string())
+        .collect();
     let trust = boolean(body, "trustEmailVerified")?.unwrap_or(false);
 
     let issuer = if kind == "google" {
         "https://accounts.google.com".to_string()
     } else {
-        let raw = if issuer_in.is_empty() && kind == "github" { "https://github.com".to_string() } else { issuer_in.clone() };
+        let raw = if issuer_in.is_empty() && kind == "github" {
+            "https://github.com".to_string()
+        } else {
+            issuer_in.clone()
+        };
         raw.trim_end_matches('/').to_string()
     };
     let api_url = (kind == "github").then(|| {
@@ -267,7 +312,9 @@ pub fn parse_audit_query(pairs: &[(String, String)]) -> Result<AuditQuery, ApiEr
     let datetime = |field: &str, value: Option<String>| -> Result<Option<DateTime<Utc>>, ApiError> {
         value
             .map(|v| {
-                DateTime::parse_from_rfc3339(&v).map(|d| d.with_timezone(&Utc)).map_err(|_| invalid(field, "Invalid ISO datetime"))
+                DateTime::parse_from_rfc3339(&v)
+                    .map(|d| d.with_timezone(&Utc))
+                    .map_err(|_| invalid(field, "Invalid ISO datetime"))
             })
             .transpose()
     };
@@ -290,7 +337,11 @@ pub fn csv_cell(value: &Value) -> String {
         Value::Object(_) | Value::Array(_) => value.to_string(),
         other => other.to_string(),
     };
-    let text = if text.starts_with(['=', '+', '-', '@', '\t', '\r']) { format!("'{text}") } else { text };
+    let text = if text.starts_with(['=', '+', '-', '@', '\t', '\r']) {
+        format!("'{text}")
+    } else {
+        text
+    };
     format!("\"{}\"", text.replace('"', "\"\""))
 }
 
@@ -422,116 +473,160 @@ async fn user(State(app): State<App>, Path(raw): Path<String>, req: Req) -> Resp
 
 async fn active_admins(app: &App) -> ApiResult<i64> {
     let db = app.pool.get().await?;
-    Ok(db.query_one("SELECT count(*) FROM users WHERE is_admin AND status = 'active'", &[]).await?.get(0))
+    Ok(db
+        .query_one("SELECT count(*) FROM users WHERE is_admin AND status = 'active'", &[])
+        .await?
+        .get(0))
 }
 
 async fn patch_user(State(app): State<App>, Path(raw): Path<String>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let patch = parse_user_patch(&req.json())?;
-        let user_id = id(&raw, "user")?;
-        let db = app.pool.get().await?;
-        let Some(row) = db.query_opt("SELECT is_admin, status FROM users WHERE id = $1", &[&user_id]).await? else {
-            return Err(ApiError::not_found("user"));
-        };
-        let (was_admin, status): (bool, String) = (row.get(0), row.get(1));
-        drop(db);
-        let demotes = patch.is_admin == Some(false) || patch.status.as_deref() == Some("disabled");
-        if user_id == admin.id && demotes {
-            return Err(conflict(
-                "self",
-                "You can't remove your own admin access or turn off your own account. Ask another admin.",
-            ));
-        }
-        if was_admin && status == "active" && demotes && active_admins(&app).await? <= 1 {
-            return Err(conflict("last_admin", "This is the last admin. Make someone else an admin first."));
-        }
-        let email_set = patch.email.is_some();
-        let email = patch.email.clone().filter(|e| !e.is_empty());
-        let db = app.pool.get().await?;
-        // An admin-entered email is vouched for by the admin, so it counts as verified.
-        let updated = db
-            .execute(
-                "UPDATE users SET updated_at = now(), display_name = COALESCE($2, display_name), \
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let patch = parse_user_patch(&req.json())?;
+            let user_id = id(&raw, "user")?;
+            let db = app.pool.get().await?;
+            let Some(row) = db
+                .query_opt("SELECT is_admin, status FROM users WHERE id = $1", &[&user_id])
+                .await?
+            else {
+                return Err(ApiError::not_found("user"));
+            };
+            let (was_admin, status): (bool, String) = (row.get(0), row.get(1));
+            drop(db);
+            let demotes = patch.is_admin == Some(false) || patch.status.as_deref() == Some("disabled");
+            if user_id == admin.id && demotes {
+                return Err(conflict(
+                    "self",
+                    "You can't remove your own admin access or turn off your own account. Ask another admin.",
+                ));
+            }
+            if was_admin && status == "active" && demotes && active_admins(&app).await? <= 1 {
+                return Err(conflict(
+                    "last_admin",
+                    "This is the last admin. Make someone else an admin first.",
+                ));
+            }
+            let email_set = patch.email.is_some();
+            let email = patch.email.clone().filter(|e| !e.is_empty());
+            let db = app.pool.get().await?;
+            // An admin-entered email is vouched for by the admin, so it counts as verified.
+            let updated = db
+                .execute(
+                    "UPDATE users SET updated_at = now(), display_name = COALESCE($2, display_name), \
                    email = CASE WHEN $3 THEN $4::text::citext ELSE email END, \
                    email_verified = CASE WHEN $3 THEN $5 ELSE email_verified END, \
                    email_identity_id = CASE WHEN $3 THEN NULL ELSE email_identity_id END, \
                    is_admin = COALESCE($6, is_admin), status = COALESCE($7, status) WHERE id = $1",
-                &[&user_id, &patch.display_name, &email_set, &email, &email.is_some(), &patch.is_admin, &patch.status],
-            )
-            .await;
-        if let Err(error) = updated {
-            if is_unique_violation(&error) {
-                return Err(conflict("email_taken", "Another user already has that email address."));
+                    &[
+                        &user_id,
+                        &patch.display_name,
+                        &email_set,
+                        &email,
+                        &email.is_some(),
+                        &patch.is_admin,
+                        &patch.status,
+                    ],
+                )
+                .await;
+            if let Err(error) = updated {
+                if is_unique_violation(&error) {
+                    return Err(conflict("email_taken", "Another user already has that email address."));
+                }
+                return Err(error.into());
             }
-            return Err(error.into());
-        }
-        if patch.display_name.is_some() || email_set {
-            let mut fields = vec![];
-            if patch.display_name.is_some() {
-                fields.push("displayName");
+            if patch.display_name.is_some() || email_set {
+                let mut fields = vec![];
+                if patch.display_name.is_some() {
+                    fields.push("displayName");
+                }
+                if email_set {
+                    fields.push("email");
+                }
+                entry(&req, admin.id, "user.updated")
+                    .target("user", user_id)
+                    .meta(json!({ "fields": fields }))
+                    .write(&db)
+                    .await?;
             }
-            if email_set {
-                fields.push("email");
+            if let Some(is_admin) = patch.is_admin
+                && is_admin != was_admin
+            {
+                let action = if is_admin {
+                    "user.admin_granted"
+                } else {
+                    "user.admin_revoked"
+                };
+                entry(&req, admin.id, action).target("user", user_id).write(&db).await?;
             }
-            entry(&req, admin.id, "user.updated").target("user", user_id).meta(json!({ "fields": fields })).write(&db).await?;
-        }
-        if let Some(is_admin) = patch.is_admin
-            && is_admin != was_admin
-        {
-            let action = if is_admin { "user.admin_granted" } else { "user.admin_revoked" };
-            entry(&req, admin.id, action).target("user", user_id).write(&db).await?;
-        }
-        if let Some(next) = &patch.status
-            && *next != status
-        {
-            let action = if next == "disabled" { "user.disabled" } else { "user.enabled" };
-            entry(&req, admin.id, action).target("user", user_id).write(&db).await?;
-            drop(db);
-            // Disabling ends everything at once: sessions, tokens, and a back-channel logout to apps.
-            if next == "disabled" {
-                app.end_sessions(&user_id.to_string(), None).await?;
+            if let Some(next) = &patch.status
+                && *next != status
+            {
+                let action = if next == "disabled" {
+                    "user.disabled"
+                } else {
+                    "user.enabled"
+                };
+                entry(&req, admin.id, action).target("user", user_id).write(&db).await?;
+                drop(db);
+                // Disabling ends everything at once: sessions, tokens, and a back-channel logout to apps.
+                if next == "disabled" {
+                    app.end_sessions(&user_id.to_string(), None).await?;
+                }
             }
+            ok(json!({ "ok": true }))
         }
-        ok(json!({ "ok": true }))
-    }
-    .await)
+        .await,
+    )
 }
 
 async fn recovery(State(app): State<App>, Path(raw): Path<String>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let user_id = id(&raw, "user")?;
-        let db = app.pool.get().await?;
-        let Some(row) = db.query_opt("SELECT status FROM users WHERE id = $1", &[&user_id]).await? else {
-            return Err(ApiError::not_found("user"));
-        };
-        drop(db);
-        if row.get::<_, String>(0) != "active" {
-            return Err(conflict("disabled", "Turn this account back on before sending a recovery link."));
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let user_id = id(&raw, "user")?;
+            let db = app.pool.get().await?;
+            let Some(row) = db
+                .query_opt("SELECT status FROM users WHERE id = $1", &[&user_id])
+                .await?
+            else {
+                return Err(ApiError::not_found("user"));
+            };
+            drop(db);
+            if row.get::<_, String>(0) != "active" {
+                return Err(conflict(
+                    "disabled",
+                    "Turn this account back on before sending a recovery link.",
+                ));
+            }
+            let revoke = req.json().get("revokeOtherMethods") == Some(&Value::Bool(true));
+            let link = app
+                .enrollments
+                .create_recovery(user_id, revoke, Actor::Admin, Some(admin.id))
+                .await?;
+            ok(json!({ "token": link.token, "link": link.link, "expiresInMinutes": RECOVERY_MINUTES }))
         }
-        let revoke = req.json().get("revokeOtherMethods") == Some(&Value::Bool(true));
-        let link = app.enrollments.create_recovery(user_id, revoke, Actor::Admin, Some(admin.id)).await?;
-        ok(json!({ "token": link.token, "link": link.link, "expiresInMinutes": RECOVERY_MINUTES }))
-    }
-    .await)
+        .await,
+    )
 }
 
 async fn revoke_sessions(State(app): State<App>, Path(raw): Path<String>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let ended = match Uuid::parse_str(&raw) {
-            Ok(user) => app.end_sessions(&user.to_string(), None).await?,
-            Err(_) => 0,
-        };
-        entry(&req, admin.id, "admin.sessions_revoked")
-            .target("user", &raw)
-            .meta(json!({ "sessions": ended }))
-            .write(&app.pool.get().await?)
-            .await?;
-        ok(json!({ "ended": ended }))
-    }
-    .await)
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let ended = match Uuid::parse_str(&raw) {
+                Ok(user) => app.end_sessions(&user.to_string(), None).await?,
+                Err(_) => 0,
+            };
+            entry(&req, admin.id, "admin.sessions_revoked")
+                .target("user", &raw)
+                .meta(json!({ "sessions": ended }))
+                .write(&app.pool.get().await?)
+                .await?;
+            ok(json!({ "ended": ended }))
+        }
+        .await,
+    )
 }
 
 fn their_last_method() -> ApiError {
@@ -542,45 +637,49 @@ fn their_last_method() -> ApiError {
 }
 
 async fn remove_passkey(State(app): State<App>, Path((user, passkey)): Path<(String, String)>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let user_id = id(&user, "passkey")?;
-        let passkey_id = id(&passkey, "passkey")?;
-        match app.passkeys.remove(user_id, passkey_id).await {
-            Ok(Some(_)) => {}
-            Ok(None) => return Err(ApiError::not_found("passkey")),
-            Err(error) if error.is::<LastMethod>() => return Err(their_last_method()),
-            Err(error) => return Err(error.into()),
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let user_id = id(&user, "passkey")?;
+            let passkey_id = id(&passkey, "passkey")?;
+            match app.passkeys.remove(user_id, passkey_id).await {
+                Ok(Some(_)) => {}
+                Ok(None) => return Err(ApiError::not_found("passkey")),
+                Err(error) if error.is::<LastMethod>() => return Err(their_last_method()),
+                Err(error) => return Err(error.into()),
+            }
+            entry(&req, admin.id, "passkey.removed")
+                .target("passkey", passkey_id)
+                .meta(json!({ "user": user }))
+                .write(&app.pool.get().await?)
+                .await?;
+            Ok(Out::new(StatusCode::NO_CONTENT))
         }
-        entry(&req, admin.id, "passkey.removed")
-            .target("passkey", passkey_id)
-            .meta(json!({ "user": user }))
-            .write(&app.pool.get().await?)
-            .await?;
-        Ok(Out::new(StatusCode::NO_CONTENT))
-    }
-    .await)
+        .await,
+    )
 }
 
 async fn unlink_identity(State(app): State<App>, Path((user, identity)): Path<(String, String)>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let user_id = id(&user, "linked account")?;
-        let identity_id = id(&identity, "linked account")?;
-        match app.identities.unlink(user_id, identity_id).await {
-            Ok(true) => {}
-            Ok(false) => return Err(ApiError::not_found("linked account")),
-            Err(error) if error.is::<LastMethod>() => return Err(their_last_method()),
-            Err(error) => return Err(error.into()),
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let user_id = id(&user, "linked account")?;
+            let identity_id = id(&identity, "linked account")?;
+            match app.identities.unlink(user_id, identity_id).await {
+                Ok(true) => {}
+                Ok(false) => return Err(ApiError::not_found("linked account")),
+                Err(error) if error.is::<LastMethod>() => return Err(their_last_method()),
+                Err(error) => return Err(error.into()),
+            }
+            entry(&req, admin.id, "identity.unlinked")
+                .target("identity", identity_id)
+                .meta(json!({ "user": user }))
+                .write(&app.pool.get().await?)
+                .await?;
+            Ok(Out::new(StatusCode::NO_CONTENT))
         }
-        entry(&req, admin.id, "identity.unlinked")
-            .target("identity", identity_id)
-            .meta(json!({ "user": user }))
-            .write(&app.pool.get().await?)
-            .await?;
-        Ok(Out::new(StatusCode::NO_CONTENT))
-    }
-    .await)
+        .await,
+    )
 }
 
 // ── invites ──
@@ -614,12 +713,14 @@ async fn invites(State(app): State<App>, req: Req) -> Response {
 }
 
 async fn create_invite(State(app): State<App>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let link = app.enrollments.create_invite(Actor::Admin, Some(admin.id)).await?;
-        ok(json!({ "token": link.token, "link": link.link, "expiresInDays": INVITE_DAYS }))
-    }
-    .await)
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let link = app.enrollments.create_invite(Actor::Admin, Some(admin.id)).await?;
+            ok(json!({ "token": link.token, "link": link.link, "expiresInDays": INVITE_DAYS }))
+        }
+        .await,
+    )
 }
 
 async fn revoke_invite(State(app): State<App>, Path(raw): Path<String>, req: Req) -> Response {
@@ -645,55 +746,66 @@ async fn revoke_invite(State(app): State<App>, Path(raw): Path<String>, req: Req
 // ── groups ──
 
 async fn groups(State(app): State<App>, req: Req) -> Response {
-    reply(async {
-        read(&app, &req).await?;
-        let db = app.pool.get().await?;
-        let rows = db
-            .query(
-                "SELECT g.id, g.slug, g.name, g.description, \
+    reply(
+        async {
+            read(&app, &req).await?;
+            let db = app.pool.get().await?;
+            let rows = db
+                .query(
+                    "SELECT g.id, g.slug, g.name, g.description, \
                    (SELECT count(*) FROM group_members m WHERE m.group_id = g.id), \
                    (SELECT count(*) FROM oidc_clients c WHERE c.required_group_id = g.id) \
                  FROM groups g ORDER BY g.slug",
-                &[],
-            )
-            .await?;
-        let list: Vec<Value> = rows
-            .iter()
-            .map(|r| {
-                json!({
-                    "id": r.get::<_, Uuid>(0),
-                    "slug": r.get::<_, String>(1),
-                    "name": r.get::<_, String>(2),
-                    "description": r.get::<_, String>(3),
-                    "members": r.get::<_, i64>(4),
-                    "apps": r.get::<_, i64>(5),
+                    &[],
+                )
+                .await?;
+            let list: Vec<Value> = rows
+                .iter()
+                .map(|r| {
+                    json!({
+                        "id": r.get::<_, Uuid>(0),
+                        "slug": r.get::<_, String>(1),
+                        "name": r.get::<_, String>(2),
+                        "description": r.get::<_, String>(3),
+                        "members": r.get::<_, i64>(4),
+                        "apps": r.get::<_, i64>(5),
+                    })
                 })
-            })
-            .collect();
-        ok(json!(list))
-    }
-    .await)
+                .collect();
+            ok(json!(list))
+        }
+        .await,
+    )
 }
 
 async fn create_group(State(app): State<App>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let input = parse_group(&req.json())?;
-        let db = app.pool.get().await?;
-        let row = db
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let input = parse_group(&req.json())?;
+            let db = app.pool.get().await?;
+            let row = db
             .query_opt(
                 "INSERT INTO groups (slug, name, description) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING id",
                 &[&input.slug, &input.name, &input.description],
             )
             .await?;
-        let Some(row) = row else {
-            return Err(conflict("exists", format!("A group called {} already exists.", input.slug)));
-        };
-        let group: Uuid = row.get(0);
-        entry(&req, admin.id, "group.created").target("group", group).meta(json!({ "slug": input.slug })).write(&db).await?;
-        Ok(Out::json(StatusCode::CREATED, &json!({ "id": group })))
-    }
-    .await)
+            let Some(row) = row else {
+                return Err(conflict(
+                    "exists",
+                    format!("A group called {} already exists.", input.slug),
+                ));
+            };
+            let group: Uuid = row.get(0);
+            entry(&req, admin.id, "group.created")
+                .target("group", group)
+                .meta(json!({ "slug": input.slug }))
+                .write(&db)
+                .await?;
+            Ok(Out::json(StatusCode::CREATED, &json!({ "id": group })))
+        }
+        .await,
+    )
 }
 
 async fn group(State(app): State<App>, Path(raw): Path<String>, req: Req) -> Response {
@@ -745,49 +857,75 @@ async fn group(State(app): State<App>, Path(raw): Path<String>, req: Req) -> Res
 }
 
 async fn update_group(State(app): State<App>, Path(raw): Path<String>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let input = parse_group(&req.json())?;
-        let group_id = id(&raw, "group")?;
-        let db = app.pool.get().await?;
-        match db
-            .execute(
-                "UPDATE groups SET slug = $2, name = $3, description = $4 WHERE id = $1",
-                &[&group_id, &input.slug, &input.name, &input.description],
-            )
-            .await
-        {
-            Ok(0) => return Err(ApiError::not_found("group")),
-            Ok(_) => {}
-            Err(error) if is_unique_violation(&error) => {
-                return Err(conflict("exists", format!("A group called {} already exists.", input.slug)));
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let input = parse_group(&req.json())?;
+            let group_id = id(&raw, "group")?;
+            let db = app.pool.get().await?;
+            match db
+                .execute(
+                    "UPDATE groups SET slug = $2, name = $3, description = $4 WHERE id = $1",
+                    &[&group_id, &input.slug, &input.name, &input.description],
+                )
+                .await
+            {
+                Ok(0) => return Err(ApiError::not_found("group")),
+                Ok(_) => {}
+                Err(error) if is_unique_violation(&error) => {
+                    return Err(conflict(
+                        "exists",
+                        format!("A group called {} already exists.", input.slug),
+                    ));
+                }
+                Err(error) => return Err(error.into()),
             }
-            Err(error) => return Err(error.into()),
+            entry(&req, admin.id, "group.updated")
+                .target("group", group_id)
+                .meta(json!({ "slug": input.slug }))
+                .write(&db)
+                .await?;
+            ok(json!({ "ok": true }))
         }
-        entry(&req, admin.id, "group.updated").target("group", group_id).meta(json!({ "slug": input.slug })).write(&db).await?;
-        ok(json!({ "ok": true }))
-    }
-    .await)
+        .await,
+    )
 }
 
 async fn delete_group(State(app): State<App>, Path(raw): Path<String>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let group_id = id(&raw, "group")?;
-        let db = app.pool.get().await?;
-        let used: i64 =
-            db.query_one("SELECT count(*) FROM oidc_clients WHERE required_group_id = $1", &[&group_id]).await?.get(0);
-        if used > 0 {
-            return Err(conflict("in_use", "Apps require this group. Change their access settings first."));
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let group_id = id(&raw, "group")?;
+            let db = app.pool.get().await?;
+            let used: i64 = db
+                .query_one(
+                    "SELECT count(*) FROM oidc_clients WHERE required_group_id = $1",
+                    &[&group_id],
+                )
+                .await?
+                .get(0);
+            if used > 0 {
+                return Err(conflict(
+                    "in_use",
+                    "Apps require this group. Change their access settings first.",
+                ));
+            }
+            let Some(row) = db
+                .query_opt("DELETE FROM groups WHERE id = $1 RETURNING slug", &[&group_id])
+                .await?
+            else {
+                return Err(ApiError::not_found("group"));
+            };
+            let slug: String = row.get(0);
+            entry(&req, admin.id, "group.deleted")
+                .target("group", group_id)
+                .meta(json!({ "slug": slug }))
+                .write(&db)
+                .await?;
+            Ok(Out::new(StatusCode::NO_CONTENT))
         }
-        let Some(row) = db.query_opt("DELETE FROM groups WHERE id = $1 RETURNING slug", &[&group_id]).await? else {
-            return Err(ApiError::not_found("group"));
-        };
-        let slug: String = row.get(0);
-        entry(&req, admin.id, "group.deleted").target("group", group_id).meta(json!({ "slug": slug })).write(&db).await?;
-        Ok(Out::new(StatusCode::NO_CONTENT))
-    }
-    .await)
+        .await,
+    )
 }
 
 async fn add_member(State(app): State<App>, Path((group, user)): Path<(String, String)>, req: Req) -> Response {
@@ -817,24 +955,29 @@ async fn add_member(State(app): State<App>, Path((group, user)): Path<(String, S
 }
 
 async fn remove_member(State(app): State<App>, Path((group, user)): Path<(String, String)>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let group_id = id(&group, "group")?;
-        let user_id = id(&user, "user")?;
-        let db = app.pool.get().await?;
-        let removed = db
-            .execute("DELETE FROM group_members WHERE group_id = $1 AND user_id = $2", &[&group_id, &user_id])
-            .await?;
-        if removed > 0 {
-            entry(&req, admin.id, "group.member_removed")
-                .target("group", group_id)
-                .meta(json!({ "user": user }))
-                .write(&db)
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let group_id = id(&group, "group")?;
+            let user_id = id(&user, "user")?;
+            let db = app.pool.get().await?;
+            let removed = db
+                .execute(
+                    "DELETE FROM group_members WHERE group_id = $1 AND user_id = $2",
+                    &[&group_id, &user_id],
+                )
                 .await?;
+            if removed > 0 {
+                entry(&req, admin.id, "group.member_removed")
+                    .target("group", group_id)
+                    .meta(json!({ "user": user }))
+                    .write(&db)
+                    .await?;
+            }
+            Ok(Out::new(StatusCode::NO_CONTENT))
         }
-        Ok(Out::new(StatusCode::NO_CONTENT))
-    }
-    .await)
+        .await,
+    )
 }
 
 // ── clients ("apps") ──
@@ -842,30 +985,39 @@ async fn remove_member(State(app): State<App>, Path((group, user)): Path<(String
 async fn group_slug(app: &App, group: Option<Uuid>) -> ApiResult<Option<String>> {
     let Some(group) = group else { return Ok(None) };
     let db = app.pool.get().await?;
-    Ok(db.query_opt("SELECT slug FROM groups WHERE id = $1", &[&group]).await?.map(|r| r.get(0)))
+    Ok(db
+        .query_opt("SELECT slug FROM groups WHERE id = $1", &[&group])
+        .await?
+        .map(|r| r.get(0)))
 }
 
 async fn clients(State(app): State<App>, req: Req) -> Response {
-    reply(async {
-        read(&app, &req).await?;
-        let mut list = Vec::new();
-        for row in app.clients.list().await? {
-            let slug = group_slug(&app, row.required_group_id).await?;
-            list.push(row.view(slug));
+    reply(
+        async {
+            read(&app, &req).await?;
+            let mut list = Vec::new();
+            for row in app.clients.list().await? {
+                let slug = group_slug(&app, row.required_group_id).await?;
+                list.push(row.view(slug));
+            }
+            ok(json!(list))
         }
-        ok(json!(list))
-    }
-    .await)
+        .await,
+    )
 }
 
 async fn client(State(app): State<App>, Path(client_id): Path<String>, req: Req) -> Response {
-    reply(async {
-        read(&app, &req).await?;
-        let Some(row) = app.clients.get(&client_id).await? else { return Err(ApiError::not_found("app")) };
-        let slug = group_slug(&app, row.required_group_id).await?;
-        ok(row.view(slug))
-    }
-    .await)
+    reply(
+        async {
+            read(&app, &req).await?;
+            let Some(row) = app.clients.get(&client_id).await? else {
+                return Err(ApiError::not_found("app"));
+            };
+            let slug = group_slug(&app, row.required_group_id).await?;
+            ok(row.view(slug))
+        }
+        .await,
+    )
 }
 
 fn parse_client(value: &Value) -> ApiResult<ClientDefinition> {
@@ -875,7 +1027,11 @@ fn parse_client(value: &Value) -> ApiResult<ClientDefinition> {
 async fn require_group_exists(app: &App, def: &ClientDefinition) -> ApiResult<()> {
     if let Some(slug) = &def.required_group {
         let db = app.pool.get().await?;
-        if db.query_opt("SELECT 1 FROM groups WHERE slug = $1", &[slug]).await?.is_none() {
+        if db
+            .query_opt("SELECT 1 FROM groups WHERE slug = $1", &[slug])
+            .await?
+            .is_none()
+        {
             return Err(invalid("requiredGroup", format!("There is no group called {slug}.")));
         }
     }
@@ -887,114 +1043,143 @@ fn client_read_only() -> ApiError {
 }
 
 async fn create_client(State(app): State<App>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let def = parse_client(&req.json())?;
-        require_group_exists(&app, &def).await?;
-        let Some(secret) = app.clients.create(&def).await? else {
-            return Err(conflict("exists", format!("An app with the client ID {} already exists.", def.client_id)));
-        };
-        entry(&req, admin.id, "client.created")
-            .target("client", &def.client_id)
-            .client(&def.client_id)
-            .write(&app.pool.get().await?)
-            .await?;
-        // The secret is shown exactly once, here.
-        Ok(Out::json(StatusCode::CREATED, &json!({ "clientId": def.client_id, "secret": secret })))
-    }
-    .await)
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let def = parse_client(&req.json())?;
+            require_group_exists(&app, &def).await?;
+            let Some(secret) = app.clients.create(&def).await? else {
+                return Err(conflict(
+                    "exists",
+                    format!("An app with the client ID {} already exists.", def.client_id),
+                ));
+            };
+            entry(&req, admin.id, "client.created")
+                .target("client", &def.client_id)
+                .client(&def.client_id)
+                .write(&app.pool.get().await?)
+                .await?;
+            // The secret is shown exactly once, here.
+            Ok(Out::json(
+                StatusCode::CREATED,
+                &json!({ "clientId": def.client_id, "secret": secret }),
+            ))
+        }
+        .await,
+    )
 }
 
 async fn update_client(State(app): State<App>, Path(client_id): Path<String>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let mut body = req.json();
-        if !body.is_object() {
-            body = json!({});
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let mut body = req.json();
+            if !body.is_object() {
+                body = json!({});
+            }
+            body["clientId"] = json!(client_id);
+            let def = parse_client(&body)?;
+            require_group_exists(&app, &def).await?;
+            let result = match app.clients.update(&def).await {
+                Ok(result) => result,
+                Err(error) if error.is::<ReadOnlyClient>() => return Err(client_read_only()),
+                Err(error) => return Err(error.into()),
+            };
+            let Some(secret) = result else {
+                return Err(ApiError::not_found("app"));
+            };
+            entry(&req, admin.id, "client.updated")
+                .target("client", &def.client_id)
+                .client(&def.client_id)
+                .write(&app.pool.get().await?)
+                .await?;
+            ok(json!({ "secret": secret }))
         }
-        body["clientId"] = json!(client_id);
-        let def = parse_client(&body)?;
-        require_group_exists(&app, &def).await?;
-        let result = match app.clients.update(&def).await {
-            Ok(result) => result,
-            Err(error) if error.is::<ReadOnlyClient>() => return Err(client_read_only()),
-            Err(error) => return Err(error.into()),
-        };
-        let Some(secret) = result else { return Err(ApiError::not_found("app")) };
-        entry(&req, admin.id, "client.updated")
-            .target("client", &def.client_id)
-            .client(&def.client_id)
-            .write(&app.pool.get().await?)
-            .await?;
-        ok(json!({ "secret": secret }))
-    }
-    .await)
+        .await,
+    )
 }
 
 async fn rotate_secret(State(app): State<App>, Path(client_id): Path<String>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let secret = match app.clients.rotate_secret(&client_id).await {
-            Ok(secret) => secret,
-            Err(error) if error.is::<ReadOnlyClient>() => return Err(client_read_only()),
-            Err(error) => return Err(error.into()),
-        };
-        let Some(secret) = secret else { return Err(conflict("no_secret", "This app has no secret to rotate.")) };
-        entry(&req, admin.id, "client.secret_rotated")
-            .target("client", &client_id)
-            .client(&client_id)
-            .write(&app.pool.get().await?)
-            .await?;
-        ok(json!({ "secret": secret }))
-    }
-    .await)
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let secret = match app.clients.rotate_secret(&client_id).await {
+                Ok(secret) => secret,
+                Err(error) if error.is::<ReadOnlyClient>() => return Err(client_read_only()),
+                Err(error) => return Err(error.into()),
+            };
+            let Some(secret) = secret else {
+                return Err(conflict("no_secret", "This app has no secret to rotate."));
+            };
+            entry(&req, admin.id, "client.secret_rotated")
+                .target("client", &client_id)
+                .client(&client_id)
+                .write(&app.pool.get().await?)
+                .await?;
+            ok(json!({ "secret": secret }))
+        }
+        .await,
+    )
 }
 
 async fn client_enabled(State(app): State<App>, Path(client_id): Path<String>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let enabled = req.json().get("enabled") == Some(&Value::Bool(true));
-        match app.clients.set_enabled(&client_id, enabled).await {
-            Ok(true) => {}
-            Ok(false) => return Err(ApiError::not_found("app")),
-            Err(error) if error.is::<ReadOnlyClient>() => return Err(client_read_only()),
-            Err(error) => return Err(error.into()),
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let enabled = req.json().get("enabled") == Some(&Value::Bool(true));
+            match app.clients.set_enabled(&client_id, enabled).await {
+                Ok(true) => {}
+                Ok(false) => return Err(ApiError::not_found("app")),
+                Err(error) if error.is::<ReadOnlyClient>() => return Err(client_read_only()),
+                Err(error) => return Err(error.into()),
+            }
+            let action = if enabled { "client.enabled" } else { "client.disabled" };
+            entry(&req, admin.id, action)
+                .target("client", &client_id)
+                .client(&client_id)
+                .write(&app.pool.get().await?)
+                .await?;
+            ok(json!({ "enabled": enabled }))
         }
-        let action = if enabled { "client.enabled" } else { "client.disabled" };
-        entry(&req, admin.id, action).target("client", &client_id).client(&client_id).write(&app.pool.get().await?).await?;
-        ok(json!({ "enabled": enabled }))
-    }
-    .await)
+        .await,
+    )
 }
 
 // ── upstream providers ──
 
 async fn providers(State(app): State<App>, req: Req) -> Response {
-    reply(async {
-        read(&app, &req).await?;
-        ok(json!(app.providers.list().await?))
-    }
-    .await)
+    reply(
+        async {
+            read(&app, &req).await?;
+            ok(json!(app.providers.list().await?))
+        }
+        .await,
+    )
 }
 
 async fn create_provider(State(app): State<App>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let input = parse_provider(&req.json())?;
-        if input.client_secret.is_none() {
-            return Err(invalid("clientSecret", "Add the client secret from the provider."));
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let input = parse_provider(&req.json())?;
+            if input.client_secret.is_none() {
+                return Err(invalid("clientSecret", "Add the client secret from the provider."));
+            }
+            if !app.providers.create(&input).await? {
+                return Err(conflict(
+                    "exists",
+                    format!("A provider called {} already exists.", input.slug),
+                ));
+            }
+            entry(&req, admin.id, "provider.created")
+                .target("provider", &input.slug)
+                .meta(json!({ "kind": input.kind }))
+                .write(&app.pool.get().await?)
+                .await?;
+            Ok(Out::json(StatusCode::CREATED, &json!({ "slug": input.slug })))
         }
-        if !app.providers.create(&input).await? {
-            return Err(conflict("exists", format!("A provider called {} already exists.", input.slug)));
-        }
-        entry(&req, admin.id, "provider.created")
-            .target("provider", &input.slug)
-            .meta(json!({ "kind": input.kind }))
-            .write(&app.pool.get().await?)
-            .await?;
-        Ok(Out::json(StatusCode::CREATED, &json!({ "slug": input.slug })))
-    }
-    .await)
+        .await,
+    )
 }
 
 fn provider_read_only() -> ApiError {
@@ -1002,75 +1187,96 @@ fn provider_read_only() -> ApiError {
 }
 
 async fn update_provider(State(app): State<App>, Path(slug): Path<String>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let mut body = req.json();
-        if !body.is_object() {
-            body = json!({});
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let mut body = req.json();
+            if !body.is_object() {
+                body = json!({});
+            }
+            body["slug"] = json!(slug);
+            let input = parse_provider(&body)?;
+            match app.providers.update(&input).await {
+                Ok(true) => {}
+                Ok(false) => return Err(ApiError::not_found("provider")),
+                Err(error) if error.is::<ReadOnlyProvider>() => return Err(provider_read_only()),
+                Err(error) => return Err(error.into()),
+            }
+            entry(&req, admin.id, "provider.updated")
+                .target("provider", &input.slug)
+                .meta(json!({ "secret_changed": input.client_secret.is_some() }))
+                .write(&app.pool.get().await?)
+                .await?;
+            ok(json!({ "ok": true }))
         }
-        body["slug"] = json!(slug);
-        let input = parse_provider(&body)?;
-        match app.providers.update(&input).await {
-            Ok(true) => {}
-            Ok(false) => return Err(ApiError::not_found("provider")),
-            Err(error) if error.is::<ReadOnlyProvider>() => return Err(provider_read_only()),
-            Err(error) => return Err(error.into()),
-        }
-        entry(&req, admin.id, "provider.updated")
-            .target("provider", &input.slug)
-            .meta(json!({ "secret_changed": input.client_secret.is_some() }))
-            .write(&app.pool.get().await?)
-            .await?;
-        ok(json!({ "ok": true }))
-    }
-    .await)
+        .await,
+    )
 }
 
 async fn provider_enabled(State(app): State<App>, Path(slug): Path<String>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let enabled = req.json().get("enabled") == Some(&Value::Bool(true));
-        match app.providers.set_enabled(&slug, enabled).await {
-            Ok(true) => {}
-            Ok(false) => return Err(ApiError::not_found("provider")),
-            Err(error) if error.is::<ReadOnlyProvider>() => return Err(provider_read_only()),
-            Err(error) => return Err(error.into()),
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let enabled = req.json().get("enabled") == Some(&Value::Bool(true));
+            match app.providers.set_enabled(&slug, enabled).await {
+                Ok(true) => {}
+                Ok(false) => return Err(ApiError::not_found("provider")),
+                Err(error) if error.is::<ReadOnlyProvider>() => return Err(provider_read_only()),
+                Err(error) => return Err(error.into()),
+            }
+            let action = if enabled {
+                "provider.enabled"
+            } else {
+                "provider.disabled"
+            };
+            entry(&req, admin.id, action)
+                .target("provider", &slug)
+                .write(&app.pool.get().await?)
+                .await?;
+            ok(json!({ "enabled": enabled }))
         }
-        let action = if enabled { "provider.enabled" } else { "provider.disabled" };
-        entry(&req, admin.id, action).target("provider", &slug).write(&app.pool.get().await?).await?;
-        ok(json!({ "enabled": enabled }))
-    }
-    .await)
+        .await,
+    )
 }
 
 // ── signing keys ──
 
 async fn keys(State(app): State<App>, req: Req) -> Response {
-    reply(async {
-        read(&app, &req).await?;
-        ok(json!({ "keys": app.keys.list().await?, "policy": app.config.rotation() }))
-    }
-    .await)
+    reply(
+        async {
+            read(&app, &req).await?;
+            ok(json!({ "keys": app.keys.list().await?, "policy": app.config.rotation() }))
+        }
+        .await,
+    )
 }
 
 async fn rotate_key(State(app): State<App>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let kid = app.keys.stage(Actor::Admin, Some(admin.id)).await?;
-        ok(json!({ "kid": kid }))
-    }
-    .await)
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let kid = app.keys.stage(Actor::Admin, Some(admin.id)).await?;
+            ok(json!({ "kid": kid }))
+        }
+        .await,
+    )
 }
 
 async fn promote_key(State(app): State<App>, req: Req) -> Response {
-    reply(async {
-        let Signed { user: admin, .. } = write(&app, &req).await?;
-        let Some(kid) = app.keys.promote(&app.config.rotation(), Actor::Admin, Some(admin.id)).await? else {
-            return Err(conflict("nothing_staged", "There is no new key waiting. Rotate first."));
-        };
-        ok(json!({ "kid": kid }))
-    }
-    .await)
+    reply(
+        async {
+            let Signed { user: admin, .. } = write(&app, &req).await?;
+            let Some(kid) = app
+                .keys
+                .promote(&app.config.rotation(), Actor::Admin, Some(admin.id))
+                .await?
+            else {
+                return Err(conflict("nothing_staged", "There is no new key waiting. Rotate first."));
+            };
+            ok(json!({ "kid": kid }))
+        }
+        .await,
+    )
 }
 
 // ── audit log ──
@@ -1103,7 +1309,16 @@ async fn audit_rows(app: &App, q: &AuditQuery, limit: i64) -> ApiResult<Vec<Valu
                AND ($5::timestamptz IS NULL OR a.at >= $5) AND ($6::timestamptz IS NULL OR a.at <= $6) \
                AND ($7::bigint IS NULL OR a.id < $7) \
              ORDER BY a.id DESC LIMIT $8",
-            &[&q.action_exact, &q.action_prefix, &q.actor, &q.target, &q.from, &q.to, &q.before, &limit],
+            &[
+                &q.action_exact,
+                &q.action_prefix,
+                &q.actor,
+                &q.target,
+                &q.from,
+                &q.to,
+                &q.before,
+                &limit,
+            ],
         )
         .await?;
     Ok(rows
@@ -1128,39 +1343,56 @@ async fn audit_rows(app: &App, q: &AuditQuery, limit: i64) -> ApiResult<Vec<Valu
 }
 
 async fn audit(State(app): State<App>, req: Req) -> Response {
-    reply(async {
-        read(&app, &req).await?;
-        let q = parse_audit_query(&req.query_pairs())?;
-        let mut rows = audit_rows(&app, &q, 51).await?;
-        let next = if rows.len() > 50 { rows[49]["id"].clone() } else { Value::Null };
-        rows.truncate(50);
-        ok(json!({ "entries": rows, "next": next }))
-    }
-    .await)
+    reply(
+        async {
+            read(&app, &req).await?;
+            let q = parse_audit_query(&req.query_pairs())?;
+            let mut rows = audit_rows(&app, &q, 51).await?;
+            let next = if rows.len() > 50 {
+                rows[49]["id"].clone()
+            } else {
+                Value::Null
+            };
+            rows.truncate(50);
+            ok(json!({ "entries": rows, "next": next }))
+        }
+        .await,
+    )
 }
 
 async fn audit_csv(State(app): State<App>, req: Req) -> Response {
-    reply(async {
-        read(&app, &req).await?;
-        let q = parse_audit_query(&req.query_pairs())?;
-        let rows = audit_rows(&app, &q, 10_000).await?;
-        let mut csv = AUDIT_COLUMNS.join(",");
-        csv.push('\n');
-        let body: Vec<String> = rows
-            .iter()
-            .map(|r| AUDIT_COLUMNS.iter().map(|k| csv_cell(&r[*k])).collect::<Vec<_>>().join(","))
-            .collect();
-        csv.push_str(&body.join("\n"));
-        csv.push('\n');
-        let filename = format!("handstamp-audit-{}.csv", Utc::now().format("%Y-%m-%d"));
-        let mut out = Out::new(StatusCode::OK)
-            .header(header::CONTENT_TYPE, "text/csv; charset=utf-8")
-            .header(header::CONTENT_DISPOSITION, &format!("attachment; filename=\"{filename}\""))
-            .no_store();
-        out.body = csv.into();
-        Ok(out)
-    }
-    .await)
+    reply(
+        async {
+            read(&app, &req).await?;
+            let q = parse_audit_query(&req.query_pairs())?;
+            let rows = audit_rows(&app, &q, 10_000).await?;
+            let mut csv = AUDIT_COLUMNS.join(",");
+            csv.push('\n');
+            let body: Vec<String> = rows
+                .iter()
+                .map(|r| {
+                    AUDIT_COLUMNS
+                        .iter()
+                        .map(|k| csv_cell(&r[*k]))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                })
+                .collect();
+            csv.push_str(&body.join("\n"));
+            csv.push('\n');
+            let filename = format!("handstamp-audit-{}.csv", Utc::now().format("%Y-%m-%d"));
+            let mut out = Out::new(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/csv; charset=utf-8")
+                .header(
+                    header::CONTENT_DISPOSITION,
+                    &format!("attachment; filename=\"{filename}\""),
+                )
+                .no_store();
+            out.body = csv.into();
+            Ok(out)
+        }
+        .await,
+    )
 }
 
 pub fn routes() -> Router<App> {
@@ -1170,13 +1402,25 @@ pub fn routes() -> Router<App> {
         .route("/api/admin/users/{id}", get(user).patch(patch_user))
         .route("/api/admin/users/{id}/recovery", post(recovery))
         .route("/api/admin/users/{id}/sessions", axum::routing::delete(revoke_sessions))
-        .route("/api/admin/users/{id}/passkeys/{passkey}", axum::routing::delete(remove_passkey))
-        .route("/api/admin/users/{id}/identities/{identity}", axum::routing::delete(unlink_identity))
+        .route(
+            "/api/admin/users/{id}/passkeys/{passkey}",
+            axum::routing::delete(remove_passkey),
+        )
+        .route(
+            "/api/admin/users/{id}/identities/{identity}",
+            axum::routing::delete(unlink_identity),
+        )
         .route("/api/admin/invites", get(invites).post(create_invite))
         .route("/api/admin/invites/{id}", axum::routing::delete(revoke_invite))
         .route("/api/admin/groups", get(groups).post(create_group))
-        .route("/api/admin/groups/{id}", get(group).patch(update_group).delete(delete_group))
-        .route("/api/admin/groups/{id}/members/{user}", put(add_member).delete(remove_member))
+        .route(
+            "/api/admin/groups/{id}",
+            get(group).patch(update_group).delete(delete_group),
+        )
+        .route(
+            "/api/admin/groups/{id}/members/{user}",
+            put(add_member).delete(remove_member),
+        )
         .route("/api/admin/clients", get(clients).post(create_client))
         .route("/api/admin/clients/{id}", get(client).put(update_client))
         .route("/api/admin/clients/{id}/secret", post(rotate_secret))
@@ -1196,12 +1440,18 @@ mod tests {
     use super::*;
 
     fn field(error: ApiError) -> (String, String) {
-        (error.extra["field"].as_str().unwrap_or_default().to_string(), error.message)
+        (
+            error.extra["field"].as_str().unwrap_or_default().to_string(),
+            error.message,
+        )
     }
 
     #[test]
     fn csv_cells_are_quoted_and_defused() {
-        assert_eq!(csv_cell(&json!("=HYPERLINK(\"https://evil\")")), "\"'=HYPERLINK(\"\"https://evil\"\")\"");
+        assert_eq!(
+            csv_cell(&json!("=HYPERLINK(\"https://evil\")")),
+            "\"'=HYPERLINK(\"\"https://evil\"\")\""
+        );
         assert_eq!(csv_cell(&json!("plain")), "\"plain\"");
         assert_eq!(csv_cell(&Value::Null), "\"\"");
         assert_eq!(csv_cell(&json!(42)), "\"42\"");
@@ -1212,7 +1462,10 @@ mod tests {
     #[test]
     fn validation_messages() {
         let e = parse_user_patch(&json!({ "email": "nope" })).err().unwrap();
-        assert_eq!(field(e), ("email".into(), "That email address needs an @ and a domain.".into()));
+        assert_eq!(
+            field(e),
+            ("email".into(), "That email address needs an @ and a domain.".into())
+        );
         assert!(parse_user_patch(&json!({ "email": "" })).unwrap().email == Some(String::new()));
         let e = parse_group(&json!({ "slug": "Bad Slug", "name": "x" })).err().unwrap();
         assert_eq!(field(e).0, "slug");
@@ -1228,7 +1481,8 @@ mod tests {
 
     #[test]
     fn provider_transforms() {
-        let gh = parse_provider(&json!({ "slug": "gh", "kind": "github", "displayName": "GH", "clientId": "x" })).unwrap();
+        let gh =
+            parse_provider(&json!({ "slug": "gh", "kind": "github", "displayName": "GH", "clientId": "x" })).unwrap();
         assert_eq!(gh.issuer, "https://github.com");
         assert_eq!(gh.api_url.as_deref(), Some("https://api.github.com"));
         assert!(gh.trust_email_verified && gh.scopes.is_empty());
@@ -1251,6 +1505,11 @@ mod tests {
         assert_eq!(q.action_prefix.as_deref(), Some("group.%"));
         assert_eq!(q.before, Some(10));
         assert!(parse_audit_query(&[("actor".into(), "x".into())]).is_err());
-        assert!(parse_audit_query(&[("from".into(), "2026-01-01T00:00:00Z".into())]).unwrap().from.is_some());
+        assert!(
+            parse_audit_query(&[("from".into(), "2026-01-01T00:00:00Z".into())])
+                .unwrap()
+                .from
+                .is_some()
+        );
     }
 }

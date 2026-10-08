@@ -51,7 +51,6 @@ pub struct Inner {
     pub csrf_key: [u8; 32],
     pub state_key: [u8; 32],
     pub test_user: Option<Uuid>,
-    pub http: reqwest::Client,
 }
 
 #[derive(Clone)]
@@ -68,13 +67,11 @@ impl App {
     pub fn new(config: Config, pool: Pool, shell: Shell, test_user: Option<Uuid>) -> Self {
         let root = config.secret_key.clone();
         let issuer = config.issuer_origin();
-        let rp = RelyingParty { id: config.issuer_host(), name: config.instance_name.clone(), origin: issuer.clone() };
-        let http = reqwest::Client::builder()
-            .user_agent("Handstamp")
-            .redirect(reqwest::redirect::Policy::none())
-            .timeout(std::time::Duration::from_secs(15))
-            .build()
-            .expect("an HTTP client");
+        let rp = RelyingParty {
+            id: config.issuer_host(),
+            name: config.instance_name.clone(),
+            origin: issuer.clone(),
+        };
         App(Arc::new(Inner {
             store: Store::new(pool.clone()),
             keys: Keys::new(pool.clone(), &root),
@@ -91,7 +88,6 @@ impl App {
             issuer,
             shell,
             test_user,
-            http,
             pool,
             config,
         }))
@@ -99,7 +95,11 @@ impl App {
 
     /// `__Host-` prefixed on https, where browsers honor it.
     pub fn host_cookie_name(&self, base: &str) -> String {
-        if self.config.https() { format!("__Host-{base}") } else { base.to_string() }
+        if self.config.https() {
+            format!("__Host-{base}")
+        } else {
+            base.to_string()
+        }
     }
 
     /// A short-lived, encrypted, HttpOnly cookie holding server state between redirects (upstream
@@ -109,7 +109,11 @@ impl App {
         let mut payload = serde_json::to_value(value).unwrap_or_else(|_| json!({}));
         payload["exp"] = json!(oidc::store::now() + max_age);
         let sealed = crypto::seal(&self.state_key, payload.to_string().as_bytes(), &name);
-        set_cookie(&name, &crypto::b64url(&sealed), &CookieOptions::lax("/", self.config.https(), Some(max_age)))
+        set_cookie(
+            &name,
+            &crypto::b64url(&sealed),
+            &CookieOptions::lax("/", self.config.https(), Some(max_age)),
+        )
     }
 
     pub fn read_sealed<T: DeserializeOwned>(&self, req: &Req, base: &str) -> Option<T> {
@@ -124,13 +128,26 @@ impl App {
     }
 
     pub fn clear_sealed(&self, base: &str) -> String {
-        clear_cookie(&self.host_cookie_name(base), &CookieOptions::lax("/", self.config.https(), None))
+        clear_cookie(
+            &self.host_cookie_name(base),
+            &CookieOptions::lax("/", self.config.https(), None),
+        )
     }
 }
 
 /// SPA routes that return index.html. Everything else under these prefixes is a 404.
-const UI_PATHS: [&str; 10] =
-    ["/", "/interaction/{uid}", "/setup", "/account", "/error", "/logout", "/signed-out", "/enroll", "/admin", "/admin/{*rest}"];
+const UI_PATHS: [&str; 10] = [
+    "/",
+    "/interaction/{uid}",
+    "/setup",
+    "/account",
+    "/error",
+    "/logout",
+    "/signed-out",
+    "/enroll",
+    "/admin",
+    "/admin/{*rest}",
+];
 
 async fn spa(State(app): State<App>, req: Req) -> Response {
     let html = app.shell.render(&req.path_and_query(), &[]).await;
@@ -146,7 +163,11 @@ async fn readyz(State(app): State<App>) -> Response {
         Ok(client) => client.simple_query("select 1").await.is_ok(),
         Err(_) => false,
     };
-    let status = if ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE };
+    let status = if ok {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
     Out::json(status, &json!({ "ok": ok })).into_response()
 }
 
@@ -178,12 +199,19 @@ async fn security_headers(State(app): State<App>, req: Request, next: Next) -> R
     response
 }
 
-/// Query strings carry authorization codes, state and id_token_hint, so URLs are logged by path only.
+/// Query strings carry authorization codes, state and id_token_hint, so URLs are logged by path
+/// only. Headers and bodies are never logged (S9).
+pub fn log_url(uri: &axum::http::Uri) -> String {
+    match uri.query() {
+        Some(_) => format!("{}?[redacted]", uri.path()),
+        None => uri.path().to_string(),
+    }
+}
+
 async fn access_log(req: Request, next: Next) -> Response {
     let started = Instant::now();
     let method = req.method().clone();
-    let path = req.uri().path().to_string();
-    let redacted = if req.uri().query().is_some() { format!("{path}?[redacted]") } else { path };
+    let redacted = log_url(req.uri());
     let response = next.run(req).await;
     let status = response.status().as_u16();
     let ms = started.elapsed().as_secs_f64() * 1000.0;
@@ -199,8 +227,14 @@ pub fn router(app: App) -> Router {
     let mut router = Router::new()
         .route("/.well-known/openid-configuration", get(oidc::discovery::discovery))
         .route("/jwks", get(oidc::discovery::jwks))
-        .route("/auth", get(oidc::authorize::authorization).post(oidc::authorize::authorization))
-        .route("/auth/{uid}", get(oidc::authorize::resume).post(oidc::authorize::resume))
+        .route(
+            "/auth",
+            get(oidc::authorize::authorization).post(oidc::authorize::authorization),
+        )
+        .route(
+            "/auth/{uid}",
+            get(oidc::authorize::resume).post(oidc::authorize::resume),
+        )
         .route("/token", post(oidc::token::token).get(oidc::token::token))
         .route("/me", get(oidc::token::userinfo).post(oidc::token::userinfo))
         .route("/token/introspection", post(oidc::token::introspection))
@@ -222,9 +256,12 @@ pub fn router(app: App) -> Router {
         router = router.route(path, get(spa));
     }
     if let crate::web::Shell::Static { .. } = app.shell {
-        let assets = Router::new().fallback_service(ServeDir::new(app.config.web_dist.join("assets"))).layer(
-            SetResponseHeaderLayer::overriding(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=31536000, immutable")),
-        );
+        let assets = Router::new()
+            .fallback_service(ServeDir::new(app.config.web_dist.join("assets")))
+            .layer(SetResponseHeaderLayer::overriding(
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("public, max-age=31536000, immutable"),
+            ));
         router = router.nest_service("/assets", assets);
     }
     router
@@ -232,4 +269,14 @@ pub fn router(app: App) -> Router {
         .layer(middleware::from_fn_with_state(app.clone(), security_headers))
         .layer(middleware::from_fn(access_log))
         .with_state(app)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn logs_urls_without_query_strings() {
+        let uri: axum::http::Uri = "/console/callback?code=secret-code&state=s".parse().unwrap();
+        assert_eq!(super::log_url(&uri), "/console/callback?[redacted]");
+        assert_eq!(super::log_url(&"/readyz".parse().unwrap()), "/readyz");
+    }
 }

@@ -106,8 +106,6 @@ impl std::fmt::Display for PasskeyError {
 #[serde(rename_all = "camelCase")]
 pub struct CredentialResponse {
     pub id: String,
-    #[serde(default)]
-    pub raw_id: Option<String>,
     pub response: AuthenticatorResponse,
 }
 
@@ -199,7 +197,11 @@ fn parse_auth_data<'a>(rp: &RelyingParty, data: &'a [u8]) -> Result<AuthData<'a>
         return Err(invalid("User verification was required"));
     }
     let counter = u32::from_be_bytes([data[33], data[34], data[35], data[36]]);
-    Ok(AuthData { flags, counter, rest: &data[37..] })
+    Ok(AuthData {
+        flags,
+        counter,
+        rest: &data[37..],
+    })
 }
 
 fn cbor_get<'a>(map: &'a Cbor, key: &Cbor) -> Option<&'a Cbor> {
@@ -219,10 +221,16 @@ pub fn verify_registration(
     response: &CredentialResponse,
     expected_challenge: &str,
 ) -> Result<VerifiedRegistration, PasskeyError> {
-    check_client_data(rp, &response.response.client_data_json, "webauthn.create", expected_challenge)?;
+    check_client_data(
+        rp,
+        &response.response.client_data_json,
+        "webauthn.create",
+        expected_challenge,
+    )?;
     let attestation = b64url_decode(response.response.attestation_object.as_deref().unwrap_or_default())
         .ok_or_else(|| invalid("attestationObject is missing"))?;
-    let object: Cbor = ciborium::from_reader(attestation.as_slice()).map_err(|_| invalid("attestationObject is not CBOR"))?;
+    let object: Cbor =
+        ciborium::from_reader(attestation.as_slice()).map_err(|_| invalid("attestationObject is not CBOR"))?;
     let auth_data = cbor_get(&object, &Cbor::Text("authData".into()))
         .and_then(Cbor::as_bytes)
         .ok_or_else(|| invalid("authData is missing"))?;
@@ -256,7 +264,11 @@ pub fn verify_registration(
         sign_count: parsed.counter as i64,
         transports: response.response.transports.clone().unwrap_or_default(),
         aaguid,
-        device_type: if parsed.flags & FLAG_BE != 0 { "multiDevice" } else { "singleDevice" },
+        device_type: if parsed.flags & FLAG_BE != 0 {
+            "multiDevice"
+        } else {
+            "singleDevice"
+        },
         backed_up: parsed.flags & FLAG_BS != 0,
     })
 }
@@ -268,7 +280,12 @@ enum Verifier {
 }
 
 fn verifier(key: &Cbor) -> Result<Verifier> {
-    let bytes = |label: i64| cbor_get(key, &int(label)).and_then(Cbor::as_bytes).cloned().ok_or_else(|| anyhow!("missing {label}"));
+    let bytes = |label: i64| {
+        cbor_get(key, &int(label))
+            .and_then(Cbor::as_bytes)
+            .cloned()
+            .ok_or_else(|| anyhow!("missing {label}"))
+    };
     match cose_alg(key) {
         Some(ES256) => {
             let mut point = vec![0x04];
@@ -288,13 +305,15 @@ fn verifier(key: &Cbor) -> Result<Verifier> {
 impl Verifier {
     fn verify(&self, message: &[u8], sig: &[u8]) -> bool {
         match self {
-            Verifier::Ecdsa(point) => {
-                UnparsedPublicKey::new(&signature::ECDSA_P256_SHA256_ASN1, point).verify(message, sig).is_ok()
-            }
-            Verifier::Ed25519(x) => UnparsedPublicKey::new(&signature::ED25519, x).verify(message, sig).is_ok(),
-            Verifier::Rsa(n, e) => {
-                RsaPublicKeyComponents { n, e }.verify(&signature::RSA_PKCS1_2048_8192_SHA256, message, sig).is_ok()
-            }
+            Verifier::Ecdsa(point) => UnparsedPublicKey::new(&signature::ECDSA_P256_SHA256_ASN1, point)
+                .verify(message, sig)
+                .is_ok(),
+            Verifier::Ed25519(x) => UnparsedPublicKey::new(&signature::ED25519, x)
+                .verify(message, sig)
+                .is_ok(),
+            Verifier::Rsa(n, e) => RsaPublicKeyComponents { n, e }
+                .verify(&signature::RSA_PKCS1_2048_8192_SHA256, message, sig)
+                .is_ok(),
         }
     }
 }
@@ -311,7 +330,12 @@ pub fn verify_authentication(
     expected_challenge: &str,
     stored: &StoredPasskey,
 ) -> Result<VerifiedAuthentication, PasskeyError> {
-    let client_data = check_client_data(rp, &response.response.client_data_json, "webauthn.get", expected_challenge)?;
+    let client_data = check_client_data(
+        rp,
+        &response.response.client_data_json,
+        "webauthn.get",
+        expected_challenge,
+    )?;
     if response.id != stored.credential_id {
         return Err(invalid("Credential ID mismatch"));
     }
@@ -332,7 +356,10 @@ pub fn verify_authentication(
     if (new_counter > 0 || stored.sign_count > 0) && new_counter <= stored.sign_count {
         return Err(PasskeyError::Counter);
     }
-    Ok(VerifiedAuthentication { sign_count: new_counter, backed_up: parsed.flags & FLAG_BS != 0 })
+    Ok(VerifiedAuthentication {
+        sign_count: new_counter,
+        backed_up: parsed.flags & FLAG_BS != 0,
+    })
 }
 
 #[cfg(test)]
@@ -344,7 +371,11 @@ mod tests {
     };
 
     fn rp() -> RelyingParty {
-        RelyingParty { id: "localhost".into(), name: "Handstamp".into(), origin: "http://localhost:3000".into() }
+        RelyingParty {
+            id: "localhost".into(),
+            name: "Handstamp".into(),
+            origin: "http://localhost:3000".into(),
+        }
     }
 
     fn cbor(value: &Cbor) -> Vec<u8> {
@@ -364,7 +395,11 @@ mod tests {
             let rng = SystemRandom::new();
             let pkcs8 = EcdsaKeyPair::generate_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, &rng).unwrap();
             let pair = EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, pkcs8.as_ref()).unwrap();
-            Self { pair, id: vec![9; 16], counter: 0 }
+            Self {
+                pair,
+                id: vec![9; 16],
+                counter: 0,
+            }
         }
 
         fn auth_data(&self, flags: u8, counter: u32, attested: &[u8]) -> Vec<u8> {
@@ -408,7 +443,8 @@ mod tests {
         fn get(&mut self, challenge: &str) -> Value {
             self.counter += 1;
             let auth = self.auth_data(0x05, self.counter, &[]);
-            let client = json!({ "type": "webauthn.get", "challenge": challenge, "origin": "http://localhost:3000" }).to_string();
+            let client = json!({ "type": "webauthn.get", "challenge": challenge, "origin": "http://localhost:3000" })
+                .to_string();
             let mut message = auth.clone();
             message.extend(sha256(client.as_bytes()));
             let sig = self.pair.sign(&SystemRandom::new(), &message).unwrap();
@@ -439,10 +475,21 @@ mod tests {
             public_key: &registered.public_key,
             sign_count: 0,
         };
-        assert_eq!(verify_authentication(&rp(), &assertion, "xyz", &stored).unwrap().sign_count, 1);
+        assert_eq!(
+            verify_authentication(&rp(), &assertion, "xyz", &stored)
+                .unwrap()
+                .sign_count,
+            1
+        );
         assert!(verify_authentication(&rp(), &assertion, "other", &stored).is_err());
-        let replayed = StoredPasskey { sign_count: 5, ..stored };
-        assert_eq!(verify_authentication(&rp(), &assertion, "xyz", &replayed).err(), Some(PasskeyError::Counter));
+        let replayed = StoredPasskey {
+            sign_count: 5,
+            ..stored
+        };
+        assert_eq!(
+            verify_authentication(&rp(), &assertion, "xyz", &replayed).err(),
+            Some(PasskeyError::Counter)
+        );
     }
 
     #[test]
@@ -454,7 +501,12 @@ mod tests {
 
     #[test]
     fn options_match_simplewebauthn() {
-        let user = PasskeyUser { handle: "aGFuZGxl", display_name: "Ada", email: None, username: None };
+        let user = PasskeyUser {
+            handle: "aGFuZGxl",
+            display_name: "Ada",
+            email: None,
+            username: None,
+        };
         let options = registration_options(&rp(), &user, &[]);
         assert_eq!(options["user"]["id"], "aGFuZGxl");
         assert_eq!(options["user"]["name"], "Ada (localhost)");

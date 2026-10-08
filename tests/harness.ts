@@ -118,11 +118,20 @@ export async function startTestServer(
     ...SECRETS,
     ...env,
   };
-  const child = spawn(BINARY, ['serve'], { env: serverEnv, stdio: ['ignore', 'ignore', 'inherit'] });
+  const child = spawn(BINARY, ['serve'], {
+    env: serverEnv,
+    stdio: ['ignore', 'ignore', 'inherit'],
+  });
   const exited = new Promise<number | null>((resolve) => child.once('exit', resolve));
   for (let attempt = 0; ; attempt++) {
     if (child.exitCode !== null) throw new Error(`handstamp exited with ${child.exitCode}`);
-    if (await fetch(`${issuer}/readyz`).then((r) => r.ok, () => false)) break;
+    if (
+      await fetch(`${issuer}/readyz`).then(
+        (r) => r.ok,
+        () => false,
+      )
+    )
+      break;
     if (attempt > 300) throw new Error('handstamp did not become ready');
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -131,7 +140,10 @@ export async function startTestServer(
   const cli = async (...args: string[]) => (await run(BINARY, args, { env: serverEnv })).stdout;
   return {
     issuer,
-    async sql<T extends Record<string, unknown> = Record<string, unknown>>(text: string, values: unknown[] = []) {
+    async sql<T extends Record<string, unknown> = Record<string, unknown>>(
+      text: string,
+      values: unknown[] = [],
+    ) {
       return (await pool.query(text, values)).rows as T[];
     },
     setup: {

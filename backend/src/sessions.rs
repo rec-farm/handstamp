@@ -23,7 +23,10 @@ impl App {
                 &[&SESSION, &account_id, &uid],
             )
             .await?;
-        Ok(rows.into_iter().filter_map(|r| serde_json::from_value(r.get(0)).ok()).collect())
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| serde_json::from_value(r.get(0)).ok())
+            .collect())
     }
 
     pub async fn session_exists(&self, account_id: &str, uid: &str) -> Result<bool> {
@@ -48,11 +51,14 @@ impl App {
         } else {
             let ids: Vec<String> = client_ids.into_iter().collect();
             let db = self.pool.get().await?;
-            db.query("SELECT client_id, name FROM oidc_clients WHERE client_id = ANY($1)", &[&ids])
-                .await?
-                .iter()
-                .map(|r| (r.get(0), r.get(1)))
-                .collect()
+            db.query(
+                "SELECT client_id, name FROM oidc_clients WHERE client_id = ANY($1)",
+                &[&ids],
+            )
+            .await?
+            .iter()
+            .map(|r| (r.get(0), r.get(1)))
+            .collect()
         };
         sessions.sort_by(|a, b| b.login_ts.cmp(&a.login_ts));
         Ok(sessions
@@ -81,19 +87,28 @@ impl App {
                 if let Some(grant) = &authorization.grant_id {
                     grants.push(grant.clone());
                 }
-                backchannel(self, client_id.clone(), account_id.to_string(), authorization.sid.clone());
+                backchannel(
+                    self,
+                    client_id.clone(),
+                    account_id.to_string(),
+                    authorization.sid.clone(),
+                );
             }
         }
         let mut db = self.pool.get().await?;
         let tx = db.transaction().await?;
         if uid.is_none() {
             let rows = tx
-                .query("SELECT id FROM oidc_payloads WHERE kind = 'grant' AND account_id = $1", &[&account_id])
+                .query(
+                    "SELECT id FROM oidc_payloads WHERE kind = 'grant' AND account_id = $1",
+                    &[&account_id],
+                )
                 .await?;
             grants.extend(rows.iter().map(|r| r.get::<_, String>(0)));
         }
         if !grants.is_empty() {
-            tx.execute("DELETE FROM oidc_payloads WHERE grant_id = ANY($1)", &[&grants]).await?;
+            tx.execute("DELETE FROM oidc_payloads WHERE grant_id = ANY($1)", &[&grants])
+                .await?;
         }
         tx.execute(
             "DELETE FROM oidc_payloads WHERE kind = $1 AND account_id = $2 AND ($3::text IS NULL OR uid = $3)",

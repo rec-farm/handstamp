@@ -76,7 +76,10 @@ impl Session {
         self.touched = true;
         self.authorizations
             .entry(client_id.to_string())
-            .or_insert_with(|| Authorization { sid: random_token(16), ..Default::default() })
+            .or_insert_with(|| Authorization {
+                sid: random_token(16),
+                ..Default::default()
+            })
     }
 
     pub fn grant_id_for(&self, client_id: &str) -> Option<&str> {

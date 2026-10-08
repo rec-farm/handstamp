@@ -1,8 +1,8 @@
 //! The audit log (S19). Metadata holds allowlisted, non-secret facts only: IDs, counts, reasons.
 
 use anyhow::Result;
-use serde_json::{Value, json};
 use deadpool_postgres::GenericClient;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -127,10 +127,19 @@ mod tests {
 
     #[test]
     fn keeps_a_prefix_only() {
-        assert_eq!(ip_prefix(Some("203.0.113.77".parse().unwrap())).unwrap(), "203.0.113.0/24");
-        assert_eq!(ip_prefix(Some("::ffff:10.1.2.3".parse().unwrap())).unwrap(), "10.1.2.0/24");
+        assert_eq!(
+            ip_prefix(Some("203.0.113.77".parse().unwrap())).unwrap(),
+            "203.0.113.0/24"
+        );
+        assert_eq!(
+            ip_prefix(Some("::ffff:10.1.2.3".parse().unwrap())).unwrap(),
+            "10.1.2.0/24"
+        );
         assert_eq!(ip_prefix(Some("::1".parse().unwrap())).unwrap(), "::1/128");
-        assert_eq!(ip_prefix(Some("2001:db8:1:2::5".parse().unwrap())).unwrap(), "2001:db8:1::/48");
+        assert_eq!(
+            ip_prefix(Some("2001:db8:1:2::5".parse().unwrap())).unwrap(),
+            "2001:db8:1::/48"
+        );
         assert_eq!(ip_prefix(None), None);
     }
 }

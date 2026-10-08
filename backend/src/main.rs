@@ -67,7 +67,11 @@ fn init_logging(level: &str) {
         other => other,
     };
     let filter = EnvFilter::new(format!("handstamp={level},warn"));
-    let _ = tracing_subscriber::fmt().json().with_current_span(false).with_env_filter(filter).try_init();
+    let _ = tracing_subscriber::fmt()
+        .json()
+        .with_current_span(false)
+        .with_env_filter(filter)
+        .try_init();
 }
 
 #[tokio::main]
@@ -114,7 +118,9 @@ struct Boot {
 /// console client, env-seeded upstream providers, and the dev test user.
 async fn bootstrap(config: &Config) -> Result<Boot> {
     let pool = db::connect(&config.database_url)?;
-    let migrations = db::migrate(&pool).await.context("can't reach or migrate the database")?;
+    let migrations = db::migrate(&pool)
+        .await
+        .context("can't reach or migrate the database")?;
     Keys::new(pool.clone(), &config.secret_key).ensure().await?;
     let clients = Clients::new(pool.clone(), &config.secret_key);
     let declared_clients = match &config.clients_file {
@@ -123,11 +129,27 @@ async fn bootstrap(config: &Config) -> Result<Boot> {
     };
     // Handstamp's own UI signs in through Handstamp (docs/PLAN.md §1.3).
     clients
-        .upsert(&console_client(&config.issuer_origin()), Some(&console_secret(&config.secret_key)), "builtin")
+        .upsert(
+            &console_client(&config.issuer_origin()),
+            Some(&console_secret(&config.secret_key)),
+            "builtin",
+        )
         .await?;
-    let upstream = Providers::new(pool.clone(), &config.secret_key).sync_env(&config.env).await?;
-    let test_user = if config.dev_login { Some(accounts::ensure_test_user(&pool).await?) } else { None };
-    Ok(Boot { pool, migrations, declared_clients, upstream, test_user })
+    let upstream = Providers::new(pool.clone(), &config.secret_key)
+        .sync_env(&config.env)
+        .await?;
+    let test_user = if config.dev_login {
+        Some(accounts::ensure_test_user(&pool).await?)
+    } else {
+        None
+    };
+    Ok(Boot {
+        pool,
+        migrations,
+        declared_clients,
+        upstream,
+        test_user,
+    })
 }
 
 async fn serve(config: Config) -> Result<ExitCode> {
@@ -170,16 +192,20 @@ async fn serve(config: Config) -> Result<ExitCode> {
         .with_context(|| format!("can't listen on {}:{}", config.host, config.port))?;
     tracing::info!(address = %listener.local_addr()?, "Server listening");
     tracing::info!(issuer = %app.issuer, "Handstamp is ready");
-    axum::serve(listener, app::router(app).into_make_service_with_connect_info::<SocketAddr>())
-        .with_graceful_shutdown(async {
-            let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("SIGTERM handler");
-            let signal = tokio::select! {
-                _ = term.recv() => "SIGTERM",
-                _ = tokio::signal::ctrl_c() => "SIGINT",
-            };
-            tracing::info!(signal, "shutting down");
-        })
-        .await?;
+    axum::serve(
+        listener,
+        app::router(app).into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(async {
+        let mut term =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("SIGTERM handler");
+        let signal = tokio::select! {
+            _ = term.recv() => "SIGTERM",
+            _ = tokio::signal::ctrl_c() => "SIGINT",
+        };
+        tracing::info!(signal, "shutting down");
+    })
+    .await?;
     scheduler.abort();
     boot.pool.close();
     Ok(ExitCode::SUCCESS)
@@ -199,7 +225,10 @@ async fn schedule(app: App) {
 
 async fn tick(app: &App) -> Result<()> {
     let db = app.pool.get().await?;
-    let locked: bool = db.query_one("SELECT pg_try_advisory_lock($1)", &[&SCHEDULER_LOCK]).await?.get(0);
+    let locked: bool = db
+        .query_one("SELECT pg_try_advisory_lock($1)", &[&SCHEDULER_LOCK])
+        .await?
+        .get(0);
     if !locked {
         return Ok(());
     }
@@ -240,16 +269,29 @@ async fn cli(config: Config, args: &[String]) -> Result<ExitCode> {
             ExitCode::SUCCESS
         }
         ("invite", _) => {
-            let link = Enrollments::new(pool.clone(), config.issuer_origin()).create_invite(Actor::Cli, None).await?;
-            println!("Invite link (works once, for {} days):\n\n  {}\n", enrollment::INVITE_DAYS, link.link);
+            let link = Enrollments::new(pool.clone(), config.issuer_origin())
+                .create_invite(Actor::Cli, None)
+                .await?;
+            println!(
+                "Invite link (works once, for {} days):\n\n  {}\n",
+                enrollment::INVITE_DAYS,
+                link.link
+            );
             ExitCode::SUCCESS
         }
         ("recovery", Some(who)) => {
             let db = pool.get().await?;
             let row = match Uuid::parse_str(who) {
-                Ok(id) => db.query_opt("SELECT id, display_name FROM users WHERE id = $1", &[&id]).await?,
+                Ok(id) => {
+                    db.query_opt("SELECT id, display_name FROM users WHERE id = $1", &[&id])
+                        .await?
+                }
                 Err(_) => {
-                    db.query_opt("SELECT id, display_name FROM users WHERE lower(email) = $1", &[&who.to_lowercase()]).await?
+                    db.query_opt(
+                        "SELECT id, display_name FROM users WHERE lower(email) = $1",
+                        &[&who.to_lowercase()],
+                    )
+                    .await?
                 }
             };
             drop(db);
@@ -292,7 +334,10 @@ async fn cli(config: Config, args: &[String]) -> Result<ExitCode> {
         }
         ("keys", Some("rotate")) => {
             let kid = keys.stage(Actor::Cli, None).await?;
-            println!("Staged {kid}. It is published now and starts signing in {}h.", config.key_stage_hours);
+            println!(
+                "Staged {kid}. It is published now and starts signing in {}h.",
+                config.key_stage_hours
+            );
             ExitCode::SUCCESS
         }
         ("keys", Some("promote")) => {

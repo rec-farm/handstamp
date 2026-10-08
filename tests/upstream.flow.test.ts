@@ -115,7 +115,9 @@ const githubUser = (login: string, email: string): GitHubUser => ({
 let graceGithub: GitHubUser;
 
 async function userByEmail(email: string) {
-  const [user] = await server.sql<{ id: string }>('SELECT id FROM users WHERE lower(email) = $1', [email]);
+  const [user] = await server.sql<{ id: string }>('SELECT id FROM users WHERE lower(email) = $1', [
+    email,
+  ]);
   return user;
 }
 

@@ -18,7 +18,6 @@ pub enum TrustProxy {
 
 #[derive(Clone)]
 pub struct Config {
-    pub production: bool,
     pub database_url: String,
     pub issuer: Url,
     pub secret_key: Vec<u8>,
@@ -178,11 +177,17 @@ impl Config {
         };
 
         let trust_proxy = parse_trust_proxy(get("TRUST_PROXY").unwrap_or_default()).unwrap_or_else(|_| {
-            problems.add("TRUST_PROXY", "Use a hop count or a comma-separated list of addresses and CIDRs");
+            problems.add(
+                "TRUST_PROXY",
+                "Use a hop count or a comma-separated list of addresses and CIDRs",
+            );
             TrustProxy::Off
         });
 
-        let instance_name = get("HANDSTAMP_INSTANCE_NAME").map(str::trim).unwrap_or("Handstamp").to_string();
+        let instance_name = get("HANDSTAMP_INSTANCE_NAME")
+            .map(str::trim)
+            .unwrap_or("Handstamp")
+            .to_string();
         if instance_name.is_empty() || instance_name.chars().count() > 60 {
             problems.add("HANDSTAMP_INSTANCE_NAME", "Use 1 to 60 characters");
         }
@@ -197,10 +202,14 @@ impl Config {
 
         let rate_limit_scale = match get("RATE_LIMIT_SCALE") {
             None => 1.0,
-            Some(v) => v.parse::<f64>().ok().filter(|s| *s > 0.0 && *s <= 1000.0).unwrap_or_else(|| {
-                problems.add("RATE_LIMIT_SCALE", "Use a number above 0 and at most 1000");
-                1.0
-            }),
+            Some(v) => v
+                .parse::<f64>()
+                .ok()
+                .filter(|s| *s > 0.0 && *s <= 1000.0)
+                .unwrap_or_else(|| {
+                    problems.add("RATE_LIMIT_SCALE", "Use a number above 0 and at most 1000");
+                    1.0
+                }),
         };
 
         let log_level = get("LOG_LEVEL").unwrap_or("info").to_string();
@@ -224,7 +233,6 @@ impl Config {
         }
 
         let config = Self {
-            production,
             database_url,
             issuer: issuer.unwrap_or_else(|| Url::parse("http://localhost").unwrap()),
             secret_key,
@@ -244,13 +252,18 @@ impl Config {
             dev_login,
             conformance_mode,
             log_level,
-            web_dist: get("HANDSTAMP_WEB_DIST").map(PathBuf::from).unwrap_or_else(default_web_dist),
+            web_dist: get("HANDSTAMP_WEB_DIST")
+                .map(PathBuf::from)
+                .unwrap_or_else(default_web_dist),
             vite_url: get("HANDSTAMP_VITE_URL").map(|v| v.trim_end_matches('/').to_string()),
             env: env.clone(),
         };
 
         if !problems.0.is_empty() {
-            bail!("Handstamp can't start. Check these settings:\n{}", problems.0.join("\n"));
+            bail!(
+                "Handstamp can't start. Check these settings:\n{}",
+                problems.0.join("\n")
+            );
         }
         Ok(config)
     }
@@ -318,7 +331,10 @@ mod tests {
     }
 
     fn error(pairs: &[(&str, &str)]) -> String {
-        Config::parse(env(pairs)).err().map(|e| e.to_string()).unwrap_or_default()
+        Config::parse(env(pairs))
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default()
     }
 
     #[test]
@@ -347,8 +363,11 @@ mod tests {
     #[test]
     fn dev_login_only_on_local_issuers() {
         assert!(
-            error(&[("HANDSTAMP_DEV_LOGIN", "1"), ("HANDSTAMP_ISSUER", "https://id.example.com")])
-                .contains("HANDSTAMP_DEV_LOGIN")
+            error(&[
+                ("HANDSTAMP_DEV_LOGIN", "1"),
+                ("HANDSTAMP_ISSUER", "https://id.example.com")
+            ])
+            .contains("HANDSTAMP_DEV_LOGIN")
         );
         assert!(Config::parse(env(&[("HANDSTAMP_DEV_LOGIN", "1")])).is_ok());
         assert!(error(&[("HANDSTAMP_DEV_LOGIN", "1"), ("NODE_ENV", "production")]).contains("HANDSTAMP_DEV_LOGIN"));

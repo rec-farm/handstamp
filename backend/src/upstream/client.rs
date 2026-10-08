@@ -38,7 +38,10 @@ pub struct UpstreamError {
 
 impl UpstreamError {
     fn failed(message: impl Into<String>) -> Self {
-        Self { code: "upstream_failed", message: message.into() }
+        Self {
+            code: "upstream_failed",
+            message: message.into(),
+        }
     }
 }
 
@@ -60,7 +63,8 @@ async fn metadata(provider: &Provider) -> Result<CoreProviderMetadata, UpstreamE
     if let Some(found) = METADATA.lock().unwrap().get(&key) {
         return Ok(found.clone());
     }
-    let issuer = IssuerUrl::new(provider.issuer.clone()).map_err(|e| UpstreamError::failed(format!("bad issuer: {e}")))?;
+    let issuer =
+        IssuerUrl::new(provider.issuer.clone()).map_err(|e| UpstreamError::failed(format!("bad issuer: {e}")))?;
     let discovered = CoreProviderMetadata::discover_async(issuer, &*HTTP)
         .await
         .map_err(|e| UpstreamError::failed(format!("Discovery for {} failed: {e}", provider.display_name)))?;
@@ -117,8 +121,14 @@ pub async fn begin(provider: &Provider, redirect_uri: &str) -> Result<(String, P
     .set_redirect_uri(redirect(redirect_uri)?);
     let (state, nonce) = (pending.state.clone(), pending.nonce.clone().unwrap_or_default());
     let mut request = client
-        .authorize_url(CoreAuthenticationFlow::AuthorizationCode, move || CsrfToken::new(state), move || Nonce::new(nonce))
-        .set_pkce_challenge(PkceCodeChallenge::from_code_verifier_sha256(&PkceCodeVerifier::new(pending.verifier.clone())));
+        .authorize_url(
+            CoreAuthenticationFlow::AuthorizationCode,
+            move || CsrfToken::new(state),
+            move || Nonce::new(nonce),
+        )
+        .set_pkce_challenge(PkceCodeChallenge::from_code_verifier_sha256(&PkceCodeVerifier::new(
+            pending.verifier.clone(),
+        )));
     for scope in scopes(provider).into_iter().filter(|s| s != "openid") {
         request = request.add_scope(Scope::new(scope));
     }
@@ -133,8 +143,15 @@ pub async fn begin(provider: &Provider, redirect_uri: &str) -> Result<(String, P
 /// An `error` on the callback: access_denied means the person said no.
 pub fn callback_error(provider: &Provider, query: &HashMap<String, String>) -> Option<UpstreamError> {
     let error = query.get("error")?;
-    let code = if error == "access_denied" { "upstream_cancelled" } else { "upstream_failed" };
-    Some(UpstreamError { code, message: format!("{} returned {error}", provider.display_name) })
+    let code = if error == "access_denied" {
+        "upstream_cancelled"
+    } else {
+        "upstream_failed"
+    };
+    Some(UpstreamError {
+        code,
+        message: format!("{} returned {error}", provider.display_name),
+    })
 }
 
 /// Exchanges the callback's code and says who the person is upstream.
@@ -147,7 +164,8 @@ pub async fn finish(
     if let Some(error) = callback_error(provider, query) {
         return Err(error);
     }
-    let exchange = |cause: String| UpstreamError::failed(format!("Code exchange with {} failed: {cause}", provider.display_name));
+    let exchange =
+        |cause: String| UpstreamError::failed(format!("Code exchange with {} failed: {cause}", provider.display_name));
     if query.get("state") != Some(&pending.state) {
         return Err(exchange("state mismatch".into()));
     }
@@ -178,16 +196,19 @@ pub async fn finish(
         .map_err(|e| exchange(e.to_string()))?;
     let id_token = tokens.id_token().ok_or_else(|| exchange("no ID token".into()))?;
     let nonce = Nonce::new(pending.nonce.clone().unwrap_or_default());
-    let claims = id_token.claims(&client.id_token_verifier(), &nonce).map_err(|e| exchange(e.to_string()))?;
+    let claims = id_token
+        .claims(&client.id_token_verifier(), &nonce)
+        .map_err(|e| exchange(e.to_string()))?;
     let subject = claims.subject().to_string();
     let mut email = claims.email().map(|e| e.to_string());
     let mut email_verified = claims.email_verified();
     let mut name = claims.name().and_then(|n| n.get(None)).map(|n| n.to_string());
     // Many issuers (Handstamp included) put email only in userinfo. The subject must match.
     if email.is_none() && client.user_info_url().is_some() {
-        let info: Option<CoreUserInfoClaims> = match client
-            .user_info(AccessToken::new(tokens.access_token().secret().clone()), Some(SubjectIdentifier::new(subject.clone())))
-        {
+        let info: Option<CoreUserInfoClaims> = match client.user_info(
+            AccessToken::new(tokens.access_token().secret().clone()),
+            Some(SubjectIdentifier::new(subject.clone())),
+        ) {
             Ok(request) => request.request_async(&*HTTP).await.ok(),
             Err(_) => None,
         };
@@ -219,11 +240,18 @@ struct GitHubEmail {
 
 /// The primary verified address, else any verified one.
 fn chosen_email(emails: &[GitHubEmail]) -> Option<&str> {
-    emails.iter().find(|e| e.primary && e.verified).or_else(|| emails.iter().find(|e| e.verified)).map(|e| e.email.as_str())
+    emails
+        .iter()
+        .find(|e| e.primary && e.verified)
+        .or_else(|| emails.iter().find(|e| e.verified))
+        .map(|e| e.email.as_str())
 }
 
 async fn github_api(provider: &Provider, token: &str, path: &str) -> Result<Value, UpstreamError> {
-    let api = provider.api_url.clone().unwrap_or_else(|| "https://api.github.com".into());
+    let api = provider
+        .api_url
+        .clone()
+        .unwrap_or_else(|| "https://api.github.com".into());
     let response = HTTP
         .get(format!("{api}{path}"))
         .header("authorization", format!("Bearer {token}"))
@@ -234,14 +262,27 @@ async fn github_api(provider: &Provider, token: &str, path: &str) -> Result<Valu
         .await
         .map_err(|e| UpstreamError::failed(format!("{} API {path} failed: {e}", provider.display_name)))?;
     if !response.status().is_success() {
-        return Err(UpstreamError::failed(format!("{} API {path} answered {}", provider.display_name, response.status().as_u16())));
+        return Err(UpstreamError::failed(format!(
+            "{} API {path} answered {}",
+            provider.display_name,
+            response.status().as_u16()
+        )));
     }
-    response.json().await.map_err(|e| UpstreamError::failed(format!("{} API {path}: {e}", provider.display_name)))
+    response
+        .json()
+        .await
+        .map_err(|e| UpstreamError::failed(format!("{} API {path}: {e}", provider.display_name)))
 }
 
 /// GitHub identity = (GitHub web URL, numeric user id). The login can be renamed; the id can't.
-async fn github_identity(provider: &Provider, code: &str, redirect_uri: &str, verifier: &str) -> Result<UpstreamIdentity, UpstreamError> {
-    let failed = |cause: String| UpstreamError::failed(format!("Code exchange with {} failed: {cause}", provider.display_name));
+async fn github_identity(
+    provider: &Provider,
+    code: &str,
+    redirect_uri: &str,
+    verifier: &str,
+) -> Result<UpstreamIdentity, UpstreamError> {
+    let failed =
+        |cause: String| UpstreamError::failed(format!("Code exchange with {} failed: {cause}", provider.display_name));
     let body = url::form_urlencoded::Serializer::new(String::new())
         .append_pair("grant_type", "authorization_code")
         .append_pair("code", code)
@@ -262,7 +303,10 @@ async fn github_identity(provider: &Provider, code: &str, redirect_uri: &str, ve
     if let Some(error) = tokens.get("error").and_then(Value::as_str) {
         return Err(failed(error.to_string()));
     }
-    let token = tokens.get("access_token").and_then(Value::as_str).ok_or_else(|| failed("no access token".into()))?;
+    let token = tokens
+        .get("access_token")
+        .and_then(Value::as_str)
+        .ok_or_else(|| failed("no access token".into()))?;
     let user = github_api(provider, token, "/user").await?;
     let emails: Vec<GitHubEmail> =
         serde_json::from_value(github_api(provider, token, "/user/emails").await?).unwrap_or_default();
@@ -272,14 +316,23 @@ async fn github_identity(provider: &Provider, code: &str, redirect_uri: &str, ve
         let list = github_api(provider, token, "/user/orgs").await?;
         Some(
             list.as_array()
-                .map(|a| a.iter().filter_map(|o| o.get("login").and_then(Value::as_str).map(str::to_string)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|o| o.get("login").and_then(Value::as_str).map(str::to_string))
+                        .collect()
+                })
                 .unwrap_or_default(),
         )
     };
     let id = match &user["id"] {
         Value::Number(n) => n.to_string(),
         Value::String(s) => s.clone(),
-        _ => return Err(UpstreamError::failed(format!("{} API /user returned no id", provider.display_name))),
+        _ => {
+            return Err(UpstreamError::failed(format!(
+                "{} API /user returned no id",
+                provider.display_name
+            )));
+        }
     };
     let email = chosen_email(&emails).map(str::to_string);
     Ok(UpstreamIdentity {
@@ -319,35 +372,56 @@ mod tests {
     }
 
     fn email(email: &str, primary: bool, verified: bool) -> GitHubEmail {
-        GitHubEmail { email: email.into(), primary, verified }
+        GitHubEmail {
+            email: email.into(),
+            primary,
+            verified,
+        }
     }
 
     #[test]
     fn picks_the_primary_verified_email() {
-        assert_eq!(chosen_email(&[email("a@x", false, true), email("b@x", true, true)]), Some("b@x"));
-        assert_eq!(chosen_email(&[email("a@x", true, false), email("b@x", false, true)]), Some("b@x"));
+        assert_eq!(
+            chosen_email(&[email("a@x", false, true), email("b@x", true, true)]),
+            Some("b@x")
+        );
+        assert_eq!(
+            chosen_email(&[email("a@x", true, false), email("b@x", false, true)]),
+            Some("b@x")
+        );
         assert_eq!(chosen_email(&[email("a@x", true, false)]), None);
     }
 
     #[test]
     fn maps_callback_errors() {
         let query = |e: &str| HashMap::from([("error".to_string(), e.to_string())]);
-        assert_eq!(callback_error(&provider("oidc"), &query("access_denied")).unwrap().code, "upstream_cancelled");
-        assert_eq!(callback_error(&provider("oidc"), &query("server_error")).unwrap().code, "upstream_failed");
+        assert_eq!(
+            callback_error(&provider("oidc"), &query("access_denied")).unwrap().code,
+            "upstream_cancelled"
+        );
+        assert_eq!(
+            callback_error(&provider("oidc"), &query("server_error")).unwrap().code,
+            "upstream_failed"
+        );
         assert!(callback_error(&provider("oidc"), &HashMap::new()).is_none());
     }
 
     #[test]
     fn github_scopes_ask_for_orgs_only_when_needed() {
         assert_eq!(scopes(&provider("github")), ["read:user", "user:email"]);
-        let restricted = Provider { github_allowed_orgs: vec!["reciam".into()], ..provider("github") };
+        let restricted = Provider {
+            github_allowed_orgs: vec!["reciam".into()],
+            ..provider("github")
+        };
         assert_eq!(scopes(&restricted), ["read:user", "user:email", "read:org"]);
         assert_eq!(scopes(&provider("oidc")), ["openid", "email", "profile"]);
     }
 
     #[tokio::test]
     async fn github_authorize_url_carries_pkce_and_state() {
-        let (url, pending) = begin(&provider("github"), "https://id.example/upstream/github/callback").await.unwrap();
+        let (url, pending) = begin(&provider("github"), "https://id.example/upstream/github/callback")
+            .await
+            .unwrap();
         let url = url::Url::parse(&url).unwrap();
         assert_eq!(url.path(), "/login/oauth/authorize");
         let q: HashMap<String, String> = url.query_pairs().into_owned().collect();

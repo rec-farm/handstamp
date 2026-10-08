@@ -78,20 +78,31 @@ impl Ctx {
     }
 
     fn prompts(&self) -> BTreeSet<String> {
-        self.get("prompt").map(|p| p.split(' ').filter(|s| !s.is_empty()).map(str::to_string).collect()).unwrap_or_default()
+        self.get("prompt")
+            .map(|p| p.split(' ').filter(|s| !s.is_empty()).map(str::to_string).collect())
+            .unwrap_or_default()
     }
 
     fn scopes(&self) -> Vec<&str> {
-        self.get("scope").map(|s| s.split(' ').filter(|s| !s.is_empty()).collect()).unwrap_or_default()
+        self.get("scope")
+            .map(|s| s.split(' ').filter(|s| !s.is_empty()).collect())
+            .unwrap_or_default()
     }
 
     /// The requested scopes Handstamp knows (oidc-provider's requestParamOIDCScopes).
     fn oidc_scopes(&self) -> Vec<&str> {
-        self.scopes().into_iter().filter(|s| SUPPORTED_SCOPES.contains(s)).collect()
+        self.scopes()
+            .into_iter()
+            .filter(|s| SUPPORTED_SCOPES.contains(s))
+            .collect()
     }
 
     fn claims(&self) -> RequestedClaims {
-        RequestedClaims::from_value(self.get("claims").and_then(|c| serde_json::from_str::<Value>(c).ok()).as_ref())
+        RequestedClaims::from_value(
+            self.get("claims")
+                .and_then(|c| serde_json::from_str::<Value>(c).ok())
+                .as_ref(),
+        )
     }
 
     fn client(&self) -> &Client {
@@ -111,7 +122,11 @@ pub async fn authorization(State(app): State<App>, req: Req) -> Response {
     if req.method == Method::POST && !app.config.https() {
         return Out::new(StatusCode::NOT_FOUND).into_response();
     }
-    let pairs = if req.method == Method::POST { req.form_pairs() } else { req.query_pairs() };
+    let pairs = if req.method == Method::POST {
+        req.form_pairs()
+    } else {
+        req.query_pairs()
+    };
     let mut params = BTreeMap::new();
     let mut duplicate = None;
     for (key, value) in pairs {
@@ -124,7 +139,11 @@ pub async fn authorization(State(app): State<App>, req: Req) -> Response {
         }
         params.insert(key, value);
     }
-    let mut ctx = Ctx { params, client: None, redirect_checked: false };
+    let mut ctx = Ctx {
+        params,
+        client: None,
+        redirect_checked: false,
+    };
     let mut session = match app.load_session(&req).await {
         Ok(session) => session,
         Err(error) => return app.render_error(&error.into()).await.into_response(),
@@ -132,7 +151,9 @@ pub async fn authorization(State(app): State<App>, req: Req) -> Response {
     let previous = (!session.new).then(|| session.id.clone());
     let mut extra_cookies = Vec::new();
     let result = match duplicate {
-        Some(key) => Err(OidcError::invalid_request(format!("'{key}' parameter must not be provided twice"))),
+        Some(key) => Err(OidcError::invalid_request(format!(
+            "'{key}' parameter must not be provided twice"
+        ))),
         None => match validate(&app, &mut ctx).await {
             Ok(()) => proceed(&app, &req, &mut ctx, &mut session, None, &mut extra_cookies).await,
             Err(error) => Err(error),
@@ -146,7 +167,11 @@ pub async fn resume(State(app): State<App>, Path(uid): Path<String>, req: Req) -
     if !app.limits.check(Limit::Authorization, &req.path, req.ip) {
         return crate::http::ApiError::rate_limited().into_response();
     }
-    let mut ctx = Ctx { params: BTreeMap::new(), client: None, redirect_checked: false };
+    let mut ctx = Ctx {
+        params: BTreeMap::new(),
+        client: None,
+        redirect_checked: false,
+    };
     let mut session = match app.load_session(&req).await {
         Ok(session) => session,
         Err(error) => return app.render_error(&error.into()).await.into_response(),
@@ -174,7 +199,9 @@ async fn resume_inner(
     };
     let interaction = found.value;
     if interaction.session_uid.as_ref().is_some_and(|u| *u != session.uid) {
-        return Err(OidcError::session_not_found("interaction session and authentication session mismatch"));
+        return Err(OidcError::session_not_found(
+            "interaction session and authentication session mismatch",
+        ));
     }
     let result = interaction.result.clone().unwrap_or_default();
     // Someone else signed in on this browser: end the old session before starting theirs.
@@ -186,7 +213,10 @@ async fn resume_inner(
         session.touched = true;
     }
     app.store.destroy(INTERACTION, &interaction.uid).await?;
-    cookies.push(clear_cookie(names.resume, &app.short_cookie_options(&format!("/auth/{uid}"), None)));
+    cookies.push(clear_cookie(
+        names.resume,
+        &app.short_cookie_options(&format!("/auth/{uid}"), None),
+    ));
     ctx.params = interaction.params.clone();
     ctx.redirect_checked = true;
     ctx.client = app.clients.load(interaction.client_id()).await?;
@@ -194,7 +224,10 @@ async fn resume_inner(
         return Err(OidcError::invalid_client("client is invalid"));
     }
     if let Some(error) = &result.error {
-        return Err(OidcError::new(error, result.error_description.clone().unwrap_or_default()));
+        return Err(OidcError::new(
+            error,
+            result.error_description.clone().unwrap_or_default(),
+        ));
     }
     if let Some(login) = &result.login {
         session.account_id = Some(login.account_id.clone());
@@ -226,7 +259,10 @@ async fn finish(
         Ok(cookies) => cookies,
         Err(error) => return app.render_error(&error.into()).await.into_response(),
     };
-    out.no_store().cookies(extra_cookies).cookies(session_cookies).into_response()
+    out.no_store()
+        .cookies(extra_cookies)
+        .cookies(session_cookies)
+        .into_response()
 }
 
 /// oidc-provider's authorization error handler: redirect only to a registered redirect_uri of a
@@ -255,7 +291,11 @@ async fn error_response(app: &App, ctx: &mut Ctx, mut error: OidcError) -> Out {
     if !error.allow_redirect || ctx.get("client_id").is_none() {
         return app.render_error(&error).await;
     }
-    let mode = ctx.get("response_mode").filter(|m| RESPONSE_MODES.contains(m)).unwrap_or("query").to_string();
+    let mode = ctx
+        .get("response_mode")
+        .filter(|m| RESPONSE_MODES.contains(m))
+        .unwrap_or("query")
+        .to_string();
     let mut params = vec![("error", error.error.clone())];
     if !error.description.is_empty() {
         params.push(("error_description", error.description.clone()));
@@ -270,10 +310,16 @@ async fn error_response(app: &App, ctx: &mut Ctx, mut error: OidcError) -> Out {
 /// Request validation, in oidc-provider's order. Normalizes params in place (scope, prompt, max_age).
 async fn validate(app: &App, ctx: &mut Ctx) -> OidcResult<()> {
     if ctx.get("request").is_some() {
-        return Err(OidcError::new("request_not_supported", "request parameter provided but not supported"));
+        return Err(OidcError::new(
+            "request_not_supported",
+            "request parameter provided but not supported",
+        ));
     }
     if ctx.get("request_uri").is_some() {
-        return Err(OidcError::new("request_uri_not_supported", "request_uri parameter provided but not supported"));
+        return Err(OidcError::new(
+            "request_uri_not_supported",
+            "request_uri parameter provided but not supported",
+        ));
     }
     let client_id = ctx.get("client_id").ok_or_else(|| missing("client_id"))?.to_string();
     ctx.client = app.clients.load(&client_id).await?;
@@ -284,18 +330,27 @@ async fn validate(app: &App, ctx: &mut Ctx) -> OidcResult<()> {
         && !RESPONSE_MODES.contains(&mode)
     {
         ctx.params.remove("response_mode");
-        return Err(OidcError::new("unsupported_response_mode", "unsupported response_mode requested"));
+        return Err(OidcError::new(
+            "unsupported_response_mode",
+            "unsupported response_mode requested",
+        ));
     }
     let response_type = ctx.get("response_type").ok_or_else(|| missing("response_type"))?;
     if ctx.get("registration").is_some() {
-        return Err(OidcError::new("registration_not_supported", "registration parameter provided but not supported"));
+        return Err(OidcError::new(
+            "registration_not_supported",
+            "registration parameter provided but not supported",
+        ));
     }
     let mut types: Vec<&str> = response_type.split(' ').filter(|s| !s.is_empty()).collect();
     types.sort();
     types.dedup();
     let response_type = types.join(" ");
     if response_type != "code" {
-        return Err(OidcError::new("unsupported_response_type", "unsupported response_type requested"));
+        return Err(OidcError::new(
+            "unsupported_response_type",
+            "unsupported response_type requested",
+        ));
     }
     ctx.params.insert("response_type".into(), response_type);
     if ctx.get("redirect_uri").is_none() {
@@ -325,7 +380,8 @@ async fn validate(app: &App, ctx: &mut Ctx) -> OidcResult<()> {
         }
     }
     // offline_access only with prompt=consent (OIDC Core §11) and for clients that may refresh.
-    if scopes.iter().any(|s| s == "offline_access") && (!prompts.contains("consent") || !ctx.client().refresh_allowed()) {
+    if scopes.iter().any(|s| s == "offline_access") && (!prompts.contains("consent") || !ctx.client().refresh_allowed())
+    {
         scopes.retain(|s| s != "offline_access");
     }
     if scopes.is_empty() {
@@ -339,7 +395,14 @@ async fn validate(app: &App, ctx: &mut Ctx) -> OidcResult<()> {
         }
     }
     if !scopes.iter().any(|s| s == "openid") {
-        for param in ["acr_values", "claims", "claims_locales", "id_token_hint", "max_age", "nonce"] {
+        for param in [
+            "acr_values",
+            "claims",
+            "claims_locales",
+            "id_token_hint",
+            "max_age",
+            "nonce",
+        ] {
             if ctx.get(param).is_some() {
                 return Err(OidcError::invalid_request(format!(
                     "openid scope must be requested when using the {param} parameter"
@@ -363,38 +426,52 @@ async fn validate(app: &App, ctx: &mut Ctx) -> OidcResult<()> {
     }
     if let Some(method) = method {
         if method != "S256" {
-            return Err(OidcError::invalid_request("not supported value of code_challenge_method"));
+            return Err(OidcError::invalid_request(
+                "not supported value of code_challenge_method",
+            ));
         }
         if challenge.is_none() {
-            return Err(OidcError::invalid_request("code_challenge must be provided with code_challenge_method"));
+            return Err(OidcError::invalid_request(
+                "code_challenge must be provided with code_challenge_method",
+            ));
         }
     }
     if challenge.is_none() && ctx.client().pkce_required() {
-        return Err(OidcError::invalid_request("Authorization Server policy requires PKCE to be used for this request"));
+        return Err(OidcError::invalid_request(
+            "Authorization Server policy requires PKCE to be used for this request",
+        ));
     }
     if let Some(challenge) = challenge
         && !PKCE_FORMAT.is_match(challenge)
     {
-        return Err(OidcError::invalid_request("code_challenge must be a string with a minimum length of 43 characters"));
+        return Err(OidcError::invalid_request(
+            "code_challenge must be a string with a minimum length of 43 characters",
+        ));
     }
 
     // Claims parameter.
     if let Some(raw) = ctx.get("claims") {
-        let claims: Value =
-            serde_json::from_str(raw).map_err(|_| OidcError::invalid_request("could not parse the claims parameter JSON"))?;
+        let claims: Value = serde_json::from_str(raw)
+            .map_err(|_| OidcError::invalid_request("could not parse the claims parameter JSON"))?;
         let Some(object) = claims.as_object() else {
             return Err(OidcError::invalid_request("claims parameter should be a JSON object"));
         };
         if !object.contains_key("userinfo") && !object.contains_key("id_token") {
-            return Err(OidcError::invalid_request("claims parameter should have userinfo or id_token properties"));
+            return Err(OidcError::invalid_request(
+                "claims parameter should have userinfo or id_token properties",
+            ));
         }
         for container in ["userinfo", "id_token"] {
             if let Some(section) = object.get(container) {
                 let Some(section) = section.as_object() else {
-                    return Err(OidcError::invalid_request(format!("claims.{container} should be an object")));
+                    return Err(OidcError::invalid_request(format!(
+                        "claims.{container} should be an object"
+                    )));
                 };
                 if section.values().any(|v| !v.is_null() && !v.is_object()) {
-                    return Err(OidcError::invalid_request(format!("claims.{container} members must be null or objects")));
+                    return Err(OidcError::invalid_request(format!(
+                        "claims.{container} members must be null or objects"
+                    )));
                 }
             }
         }
@@ -429,7 +506,10 @@ async fn validate(app: &App, ctx: &mut Ctx) -> OidcResult<()> {
 /// Our own ID token, for this client. Expired hints are fine: the point is who, not when.
 pub async fn verify_id_token_hint(app: &App, hint: &str, client_id: &str) -> Result<Map<String, Value>> {
     let (_, payload) = app.keys.snapshot().await?.verify(hint)?;
-    anyhow::ensure!(payload.get("iss").and_then(Value::as_str) == Some(app.issuer.as_str()), "issuer");
+    anyhow::ensure!(
+        payload.get("iss").and_then(Value::as_str) == Some(app.issuer.as_str()),
+        "issuer"
+    );
     let aud_ok = match payload.get("aud") {
         Some(Value::String(aud)) => aud == client_id,
         Some(Value::Array(auds)) => auds.iter().any(|a| a == client_id),
@@ -486,7 +566,8 @@ async fn proceed(
             None => None,
         };
         let mut saved = existing.is_some();
-        let mut g = existing.unwrap_or_else(|| Grant::new(&account.id.to_string(), &client.client_id, app.session_ttl()));
+        let mut g =
+            existing.unwrap_or_else(|| Grant::new(&account.id.to_string(), &client.client_id, app.session_ttl()));
         if client.first_party {
             g.add_scopes(ctx.oidc_scopes());
             let names = requested.names();
@@ -553,7 +634,13 @@ async fn proceed(
                 "id_token_hint" => "id_token_hint and authenticated subject do not match",
                 _ => "requested subject could not be obtained",
             };
-            check = Some(Check { prompt: "login", reasons, details, error: "login_required", description });
+            check = Some(Check {
+                prompt: "login",
+                reasons,
+                details,
+                error: "login_required",
+                description,
+            });
         }
     }
     if check.is_none()
@@ -579,7 +666,11 @@ async fn proceed(
         if pending("consent") {
             reasons.push("consent_prompt");
         }
-        let missing_scopes: Vec<&str> = ctx.oidc_scopes().into_iter().filter(|s| !g.scopes.contains(*s)).collect();
+        let missing_scopes: Vec<&str> = ctx
+            .oidc_scopes()
+            .into_iter()
+            .filter(|s| !g.scopes.contains(*s))
+            .collect();
         if !missing_scopes.is_empty() {
             reasons.push("op_scopes_missing");
             details.insert("missingOIDCScope".into(), json!(missing_scopes));
@@ -587,7 +678,9 @@ async fn proceed(
         let missing_claims: Vec<String> = requested
             .names()
             .into_iter()
-            .filter(|c| !g.claims.contains(c) && !["sub", "sid", "auth_time", "acr", "amr", "iss"].contains(&c.as_str()))
+            .filter(|c| {
+                !g.claims.contains(c) && !["sub", "sid", "auth_time", "acr", "amr", "iss"].contains(&c.as_str())
+            })
             .collect();
         if !missing_claims.is_empty() {
             reasons.push("op_claims_missing");
@@ -599,7 +692,13 @@ async fn proceed(
                 "op_scopes_missing" => "requested scopes not granted",
                 _ => "requested claims not granted",
             };
-            check = Some(Check { prompt: "consent", reasons, details, error: "consent_required", description });
+            check = Some(Check {
+                prompt: "consent",
+                reasons,
+                details,
+                error: "consent_required",
+                description,
+            });
         }
     }
     drop(db);
@@ -625,12 +724,29 @@ async fn proceed(
             exp: now() + INTERACTION_TTL,
         };
         app.store
-            .save(INTERACTION, &uid, &interaction, Columns { uid: Some(&uid), ..Default::default() }, interaction.exp)
+            .save(
+                INTERACTION,
+                &uid,
+                &interaction,
+                Columns {
+                    uid: Some(&uid),
+                    ..Default::default()
+                },
+                interaction.exp,
+            )
             .await?;
         let names = app.cookie_names();
         let destination = format!("/interaction/{uid}");
-        cookies.push(set_cookie(names.interaction, &uid, &app.short_cookie_options(&destination, Some(INTERACTION_TTL))));
-        cookies.push(set_cookie(names.resume, &uid, &app.short_cookie_options(&format!("/auth/{uid}"), Some(INTERACTION_TTL))));
+        cookies.push(set_cookie(
+            names.interaction,
+            &uid,
+            &app.short_cookie_options(&destination, Some(INTERACTION_TTL)),
+        ));
+        cookies.push(set_cookie(
+            names.resume,
+            &uid,
+            &app.short_cookie_options(&format!("/auth/{uid}"), Some(INTERACTION_TTL)),
+        ));
         let _ = req;
         return Ok(Out::see_other(&destination));
     }
@@ -683,7 +799,11 @@ async fn proceed(
             CODE,
             &token_id(&value),
             &code,
-            Columns { grant_id: Some(&grant.jti), account_id: Some(&account_id), ..Default::default() },
+            Columns {
+                grant_id: Some(&grant.jti),
+                account_id: Some(&account_id),
+                ..Default::default()
+            },
             now() + CODE_TTL,
         )
         .await?;
@@ -702,7 +822,11 @@ pub async fn save_grant(app: &App, grant: &Grant) -> Result<()> {
             GRANT,
             &grant.jti,
             grant,
-            Columns { grant_id: Some(&grant.jti), account_id: Some(&grant.account_id), ..Default::default() },
+            Columns {
+                grant_id: Some(&grant.jti),
+                account_id: Some(&grant.account_id),
+                ..Default::default()
+            },
             grant.exp,
         )
         .await

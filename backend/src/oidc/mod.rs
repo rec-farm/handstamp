@@ -20,7 +20,7 @@ use crate::{
     accounts::{self, Account},
     app::App,
     clients::Client,
-    crypto::{b64url, constant_time_eq},
+    crypto::constant_time_eq,
     http::{CookieOptions, Out, Req, SameSite, clear_cookie, set_cookie},
     web,
 };
@@ -39,7 +39,12 @@ pub struct OidcError {
 
 impl OidcError {
     pub fn new(error: &str, description: impl Into<String>) -> Self {
-        Self { error: error.into(), description: description.into(), status: StatusCode::BAD_REQUEST, allow_redirect: true }
+        Self {
+            error: error.into(),
+            description: description.into(),
+            status: StatusCode::BAD_REQUEST,
+            allow_redirect: true,
+        }
     }
     pub fn invalid_request(description: impl Into<String>) -> Self {
         Self::new("invalid_request", description)
@@ -59,14 +64,20 @@ impl OidcError {
     pub fn invalid_redirect_uri() -> Self {
         Self {
             allow_redirect: false,
-            ..Self::new("invalid_redirect_uri", "redirect_uri did not match any of the client's registered redirect_uris")
+            ..Self::new(
+                "invalid_redirect_uri",
+                "redirect_uri did not match any of the client's registered redirect_uris",
+            )
         }
     }
     pub fn session_not_found(description: impl Into<String>) -> Self {
         Self::new("invalid_request", description)
     }
     pub fn server_error() -> Self {
-        Self { status: StatusCode::INTERNAL_SERVER_ERROR, ..Self::new("server_error", "oops! something went wrong") }
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            ..Self::new("server_error", "oops! something went wrong")
+        }
     }
     pub fn status(mut self, status: StatusCode) -> Self {
         self.status = status;
@@ -75,9 +86,12 @@ impl OidcError {
 
     /// The token-endpoint style JSON body.
     pub fn json(&self) -> Out {
-        Out::json(self.status, &json!({ "error": self.error, "error_description": self.description }))
-            .no_store()
-            .header(axum::http::header::PRAGMA, "no-cache")
+        Out::json(
+            self.status,
+            &json!({ "error": self.error, "error_description": self.description }),
+        )
+        .no_store()
+        .header(axum::http::header::PRAGMA, "no-cache")
     }
 }
 
@@ -113,9 +127,17 @@ pub struct CookieNames {
 
 pub fn cookie_names(https: bool) -> CookieNames {
     if https {
-        CookieNames { session: "__Host-hs_session", interaction: "__Secure-hs_interaction", resume: "__Secure-hs_resume" }
+        CookieNames {
+            session: "__Host-hs_session",
+            interaction: "__Secure-hs_interaction",
+            resume: "__Secure-hs_resume",
+        }
     } else {
-        CookieNames { session: "hs_session", interaction: "hs_interaction", resume: "hs_resume" }
+        CookieNames {
+            session: "hs_session",
+            interaction: "hs_interaction",
+            resume: "hs_resume",
+        }
     }
 }
 
@@ -128,7 +150,12 @@ impl App {
     /// works cross-site with SameSite=None (needs Secure), so https issuers use None (R16).
     pub fn session_cookie_options(&self, max_age: Option<i64>) -> CookieOptions {
         let https = self.config.https();
-        CookieOptions { path: "/".into(), max_age, same_site: if https { SameSite::None } else { SameSite::Lax }, secure: https }
+        CookieOptions {
+            path: "/".into(),
+            max_age,
+            same_site: if https { SameSite::None } else { SameSite::Lax },
+            secure: https,
+        }
     }
 
     pub fn short_cookie_options(&self, path: &str, max_age: Option<i64>) -> CookieOptions {
@@ -167,12 +194,20 @@ impl App {
                 SESSION,
                 &store::token_id(&session.id),
                 session,
-                Columns { uid: Some(&session.uid), account_id: session.account_id.as_deref(), ..Default::default() },
+                Columns {
+                    uid: Some(&session.uid),
+                    account_id: session.account_id.as_deref(),
+                    ..Default::default()
+                },
                 session.exp,
             )
             .await?;
         let max_age = (session.exp - now()).max(0);
-        Ok(vec![set_cookie(self.cookie_names().session, &session.id, &self.session_cookie_options(Some(max_age)))])
+        Ok(vec![set_cookie(
+            self.cookie_names().session,
+            &session.id,
+            &self.session_cookie_options(Some(max_age)),
+        )])
     }
 
     pub fn clear_session_cookie(&self) -> String {
@@ -181,7 +216,11 @@ impl App {
 
     /// oidc-provider's renderError: a fixed message per code, nothing from the request (S20).
     pub async fn render_error(&self, error: &OidcError) -> Out {
-        let code = if regex_error_code(&error.error) { error.error.as_str() } else { "server_error" };
+        let code = if regex_error_code(&error.error) {
+            error.error.as_str()
+        } else {
+            "server_error"
+        };
         let html = if self.config.conformance_mode {
             format!(
                 "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Error</title></head><body><h1>Handstamp could not complete this request</h1><p>error: {code}</p></body></html>"
@@ -202,7 +241,9 @@ pub fn respond(mode: &str, redirect_uri: &str, params: &[(&str, String)]) -> Out
     match mode {
         "form_post" => form_post(redirect_uri, params),
         "fragment" => {
-            let encoded = url::form_urlencoded::Serializer::new(String::new()).extend_pairs(params).finish();
+            let encoded = url::form_urlencoded::Serializer::new(String::new())
+                .extend_pairs(params)
+                .finish();
             Out::see_other(&format!("{redirect_uri}#{encoded}"))
         }
         _ => {
@@ -220,18 +261,30 @@ const AUTOSUBMIT: &str = "document.forms[0].submit()";
 
 /// An auto-submitting form. Its one inline script is allowed by hash, not by 'unsafe-inline'.
 pub fn form_post(action: &str, params: &[(&str, String)]) -> Out {
-    let escape = |v: &str| v.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;").replace('>', "&gt;");
+    let escape = |v: &str| {
+        v.replace('&', "&amp;")
+            .replace('"', "&quot;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+    };
     let inputs: String = params
         .iter()
-        .map(|(k, v)| format!("<input type=\"hidden\" name=\"{}\" value=\"{}\"/>", escape(k), escape(v)))
+        .map(|(k, v)| {
+            format!(
+                "<input type=\"hidden\" name=\"{}\" value=\"{}\"/>",
+                escape(k),
+                escape(v)
+            )
+        })
         .collect();
     let html = format!(
         "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Submitting…</title></head><body><form method=\"post\" action=\"{}\">{inputs}<noscript><button type=\"submit\">Continue</button></noscript></form><script>{AUTOSUBMIT}</script></body></html>",
         escape(action)
     );
-    Out::html(StatusCode::OK, html)
-        .no_store()
-        .header(axum::http::header::CONTENT_SECURITY_POLICY, &web::html_csp(&[web::script_hash(AUTOSUBMIT)]))
+    Out::html(StatusCode::OK, html).no_store().header(
+        axum::http::header::CONTENT_SECURITY_POLICY,
+        &web::html_csp(&[web::script_hash(AUTOSUBMIT)]),
+    )
 }
 
 /// The claims parameter, parsed once.
@@ -243,8 +296,17 @@ pub struct RequestedClaims {
 
 impl RequestedClaims {
     pub fn from_value(value: Option<&Value>) -> Self {
-        let section = |name: &str| value.and_then(|v| v.get(name)).and_then(Value::as_object).cloned().unwrap_or_default();
-        Self { id_token: section("id_token"), userinfo: section("userinfo") }
+        let section = |name: &str| {
+            value
+                .and_then(|v| v.get(name))
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default()
+        };
+        Self {
+            id_token: section("id_token"),
+            userinfo: section("userinfo"),
+        }
     }
 
     /// Every claim named in either section (what consent asks about).
@@ -268,7 +330,10 @@ pub async fn release_claims(
 ) -> Result<Map<String, Value>> {
     let db = app.pool.get().await?;
     let available = account.available(&db, granted_scopes).await?;
-    let mut mask: BTreeSet<&str> = scope_mask.iter().flat_map(|s| accounts::scope_claims(s).iter().copied()).collect();
+    let mut mask: BTreeSet<&str> = scope_mask
+        .iter()
+        .flat_map(|s| accounts::scope_claims(s).iter().copied())
+        .collect();
     for claim in requested.keys() {
         if NON_REJECTABLE.contains(&claim.as_str()) || grant_claims.contains(claim) {
             mask.insert(claim);
@@ -303,7 +368,12 @@ pub struct IdTokenInput<'a> {
 /// userinfo; the ID token gets the openid-scope claims (sub, groups, amr) plus individually
 /// requested ones (D6).
 pub async fn id_token(app: &App, input: IdTokenInput<'_>) -> Result<String> {
-    let granted: BTreeSet<String> = input.scope.split(' ').filter(|s| !s.is_empty()).map(str::to_string).collect();
+    let granted: BTreeSet<String> = input
+        .scope
+        .split(' ')
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
     let mut claims = release_claims(
         app,
         input.account,
@@ -329,7 +399,10 @@ pub async fn id_token(app: &App, input: IdTokenInput<'_>) -> Result<String> {
     claims.insert("aud".into(), json!(input.client.client_id));
     claims.insert("iss".into(), json!(app.issuer));
     let signer = app.keys.signer().await?;
-    signer.sign(&json!({ "alg": crate::keys::ALG, "kid": signer.kid }), &Value::Object(claims))
+    signer.sign(
+        &json!({ "alg": crate::keys::ALG, "kid": signer.kid }),
+        &Value::Object(claims),
+    )
 }
 
 /// Client authentication at the token, introspection and revocation endpoints. A client may only
@@ -339,18 +412,17 @@ pub struct ClientAuth {
 }
 
 pub async fn authenticate_client(app: &App, req: &Req, form: &BTreeMap<String, String>) -> OidcResult<ClientAuth> {
-    let basic = req.header("authorization").and_then(|h| h.strip_prefix("Basic ").or_else(|| h.strip_prefix("basic ")));
-    let unauthorized = |description: &str, used_basic: bool| {
-        let mut error = OidcError::invalid_client(description).status(StatusCode::UNAUTHORIZED);
-        if !used_basic {
-            error.status = StatusCode::UNAUTHORIZED;
-        }
-        error
-    };
+    let basic = req
+        .header("authorization")
+        .and_then(|h| h.strip_prefix("Basic ").or_else(|| h.strip_prefix("basic ")));
+    let unauthorized = |description: &str| OidcError::invalid_client(description).status(StatusCode::UNAUTHORIZED);
     let (client_id, secret, method) = if let Some(encoded) = basic {
-        let decoded = STANDARD.decode(encoded.trim()).ok().and_then(|b| String::from_utf8(b).ok());
+        let decoded = STANDARD
+            .decode(encoded.trim())
+            .ok()
+            .and_then(|b| String::from_utf8(b).ok());
         let Some((id, secret)) = decoded.as_deref().and_then(|d| d.split_once(':')) else {
-            return Err(unauthorized("invalid authorization header value format", true));
+            return Err(unauthorized("invalid authorization header value format"));
         };
         let decode = |v: &str| {
             url::form_urlencoded::parse(format!("v={}", v.replace('+', "%2B")).as_bytes())
@@ -359,7 +431,9 @@ pub async fn authenticate_client(app: &App, req: &Req, form: &BTreeMap<String, S
                 .unwrap_or_default()
         };
         if form.contains_key("client_secret") {
-            return Err(OidcError::invalid_request("client authentication must only be provided using one mechanism"));
+            return Err(OidcError::invalid_request(
+                "client authentication must only be provided using one mechanism",
+            ));
         }
         (decode(id), Some(decode(secret)), "client_secret_basic")
     } else if let Some(secret) = form.get("client_secret") {
@@ -369,41 +443,42 @@ pub async fn authenticate_client(app: &App, req: &Req, form: &BTreeMap<String, S
         (form.get("client_id").cloned().unwrap_or_default(), None, "none")
     };
     if client_id.is_empty() {
-        return Err(OidcError::invalid_request("no client authentication mechanism provided"));
+        return Err(OidcError::invalid_request(
+            "no client authentication mechanism provided",
+        ));
     }
     if form.get("client_id").is_some_and(|id| id != &client_id) {
-        return Err(OidcError::invalid_request("mismatch in body and authorization client ids"));
+        return Err(OidcError::invalid_request(
+            "mismatch in body and authorization client ids",
+        ));
     }
-    let used_basic = method == "client_secret_basic";
     let Some(client) = app.clients.load(&client_id).await? else {
-        return Err(unauthorized("client authentication failed", used_basic));
+        return Err(unauthorized("client authentication failed"));
     };
     if client.auth_method != method {
-        return Err(unauthorized("client authentication failed", used_basic));
+        return Err(unauthorized("client authentication failed"));
     }
     if method != "none" {
         let expected = client.secret.clone().unwrap_or_default();
         if !constant_time_eq(expected.as_bytes(), secret.unwrap_or_default().as_bytes()) {
-            return Err(unauthorized("client authentication failed", used_basic));
+            return Err(unauthorized("client authentication failed"));
         }
     }
     Ok(ClientAuth { client })
 }
 
 /// invalid_client at a token-style endpoint, with the Basic challenge clients expect.
-pub fn client_error_response(app: &App, error: &OidcError, req: &Req) -> Out {
+pub fn client_error_response(app: &App, error: &OidcError) -> Out {
     let mut out = error.json();
     if error.error == "invalid_client" {
         out.status = StatusCode::UNAUTHORIZED;
         let realm = app.config.issuer_host();
-        let scheme = if req.header("authorization").is_some_and(|h| h.to_ascii_lowercase().starts_with("basic")) {
-            "Basic"
-        } else {
-            "Basic"
-        };
         out = out.header(
             axum::http::header::WWW_AUTHENTICATE,
-            &format!("{scheme} realm=\"{realm}\", error=\"invalid_client\", error_description=\"{}\"", error.description),
+            &format!(
+                "Basic realm=\"{realm}\", error=\"invalid_client\", error_description=\"{}\"",
+                error.description
+            ),
         );
     }
     out
@@ -417,17 +492,13 @@ pub fn single_params(pairs: Vec<(String, String)>, allowed: Option<&[&str]>) -> 
             continue;
         }
         if out.contains_key(&key) {
-            return Err(OidcError::invalid_request(format!("'{key}' parameter must not be provided twice")));
+            return Err(OidcError::invalid_request(format!(
+                "'{key}' parameter must not be provided twice"
+            )));
         }
         if !value.is_empty() {
             out.insert(key, value);
         }
     }
     Ok(out)
-}
-
-/// at_hash-style left-half hash, used for the sid in logout tokens' jti etc.
-pub fn half_hash(value: &str) -> String {
-    let hash = crate::crypto::sha256(value.as_bytes());
-    b64url(&hash[..16])
 }

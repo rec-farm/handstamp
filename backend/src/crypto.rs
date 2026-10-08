@@ -20,7 +20,6 @@ const TAG_BYTES: usize = 16;
 pub enum Purpose {
     ClientSecrets,
     SigningKeys,
-    CookieKeys,
     ConsoleClient,
     UpstreamSecrets,
     StateCookies,
@@ -32,7 +31,6 @@ impl Purpose {
         match self {
             Purpose::ClientSecrets => b"client-secrets",
             Purpose::SigningKeys => b"signing-keys",
-            Purpose::CookieKeys => b"cookie-keys",
             Purpose::ConsoleClient => b"console-client",
             Purpose::UpstreamSecrets => b"upstream-secrets",
             Purpose::StateCookies => b"state-cookies",
@@ -42,7 +40,9 @@ impl Purpose {
 }
 
 pub fn parse_root_key(value: &str) -> Result<Vec<u8>> {
-    let key = STANDARD.decode(value.trim()).context("HANDSTAMP_SECRET_KEY must be base64")?;
+    let key = STANDARD
+        .decode(value.trim())
+        .context("HANDSTAMP_SECRET_KEY must be base64")?;
     if key.len() < 32 {
         bail!("HANDSTAMP_SECRET_KEY must decode to at least 32 bytes");
     }
@@ -62,7 +62,13 @@ pub fn seal(key: &[u8; 32], plaintext: &[u8], aad: &str) -> Vec<u8> {
     let iv = random_bytes::<IV_BYTES>();
     // aes-gcm appends the tag; the envelope puts it before the ciphertext.
     let mut body = cipher
-        .encrypt(Nonce::from_slice(&iv), Payload { msg: plaintext, aad: aad.as_bytes() })
+        .encrypt(
+            Nonce::from_slice(&iv),
+            Payload {
+                msg: plaintext,
+                aad: aad.as_bytes(),
+            },
+        )
         .expect("AES-GCM encryption does not fail for in-memory buffers");
     let tag = body.split_off(body.len() - TAG_BYTES);
     let mut sealed = Vec::with_capacity(1 + IV_BYTES + TAG_BYTES + body.len());
@@ -82,7 +88,13 @@ pub fn open(key: &[u8; 32], sealed: &[u8], aad: &str) -> Result<Vec<u8>> {
     let mut combined = sealed[1 + IV_BYTES + TAG_BYTES..].to_vec();
     combined.extend_from_slice(tag);
     Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key))
-        .decrypt(Nonce::from_slice(iv), Payload { msg: &combined, aad: aad.as_bytes() })
+        .decrypt(
+            Nonce::from_slice(iv),
+            Payload {
+                msg: &combined,
+                aad: aad.as_bytes(),
+            },
+        )
         .map_err(|_| anyhow::anyhow!("Unsupported state or unable to authenticate data"))
 }
 
@@ -92,14 +104,18 @@ pub fn open_string(key: &[u8; 32], sealed: &[u8], aad: &str) -> Result<String> {
 
 pub fn random_bytes<const N: usize>() -> [u8; N] {
     let mut out = [0u8; N];
-    aws_lc_rs::rand::SystemRandom::new().fill(&mut out).expect("the system RNG is available");
+    aws_lc_rs::rand::SystemRandom::new()
+        .fill(&mut out)
+        .expect("the system RNG is available");
     out
 }
 
 /// base64url, no padding: what randomBytes(n).toString('base64url') produced.
 pub fn random_token(bytes: usize) -> String {
     let mut out = vec![0u8; bytes];
-    aws_lc_rs::rand::SystemRandom::new().fill(&mut out).expect("the system RNG is available");
+    aws_lc_rs::rand::SystemRandom::new()
+        .fill(&mut out)
+        .expect("the system RNG is available");
     b64url(&out)
 }
 
@@ -134,14 +150,21 @@ const ALPHABET: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 /// The one-time setup code printed at first boot: HS-XXXXX-XXXXX-XXXXX-XXXXX (100 bits).
 pub fn new_setup_code() -> String {
-    let chars: Vec<char> = random_bytes::<20>().iter().map(|b| ALPHABET[(b & 31) as usize] as char).collect();
+    let chars: Vec<char> = random_bytes::<20>()
+        .iter()
+        .map(|b| ALPHABET[(b & 31) as usize] as char)
+        .collect();
     let groups: Vec<String> = chars.chunks(5).map(|c| c.iter().collect()).collect();
     format!("HS-{}", groups.join("-"))
 }
 
 /// Forgiving about case, spaces, dashes and look-alike letters; strict about everything else.
 pub fn normalize_setup_code(input: &str) -> String {
-    let upper: String = input.to_uppercase().chars().filter(|c| !c.is_whitespace() && *c != '-').collect();
+    let upper: String = input
+        .to_uppercase()
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '-')
+        .collect();
     let stripped = upper.strip_prefix("HS").unwrap_or(&upper);
     stripped.replace('O', "0").replace(['I', 'L'], "1")
 }
@@ -155,7 +178,10 @@ mod tests {
     use super::*;
 
     fn hex(s: &str) -> Vec<u8> {
-        (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
     }
 
     // Produced by the Node envelope: root = 32 × 0x07, purpose signing-keys, aad "kid-123".
@@ -173,7 +199,10 @@ mod tests {
     #[test]
     fn opens_what_node_sealed() {
         let key = derive_key(&parse_root_key(ROOT).unwrap(), Purpose::SigningKeys);
-        assert_eq!(open(&key, &hex(SEALED), "kid-123").unwrap(), br#"{"hello":"handstamp"}"#);
+        assert_eq!(
+            open(&key, &hex(SEALED), "kid-123").unwrap(),
+            br#"{"hello":"handstamp"}"#
+        );
     }
 
     #[test]
@@ -193,8 +222,15 @@ mod tests {
     #[test]
     fn setup_codes_are_forgiving_but_exact() {
         let code = new_setup_code();
-        assert!(regex::Regex::new(r"^HS-[0-9A-HJKMNP-TV-Z]{5}(-[0-9A-HJKMNP-TV-Z]{5}){3}$").unwrap().is_match(&code));
-        assert_eq!(hash_setup_code(&code), hash_setup_code(&code.to_lowercase().replace('-', " ")));
+        assert!(
+            regex::Regex::new(r"^HS-[0-9A-HJKMNP-TV-Z]{5}(-[0-9A-HJKMNP-TV-Z]{5}){3}$")
+                .unwrap()
+                .is_match(&code)
+        );
+        assert_eq!(
+            hash_setup_code(&code),
+            hash_setup_code(&code.to_lowercase().replace('-', " "))
+        );
         assert_eq!(normalize_setup_code("hs-0o1il"), "00111");
         assert_ne!(hash_setup_code("HS-00000-00000-00000-00000"), hash_setup_code(&code));
     }

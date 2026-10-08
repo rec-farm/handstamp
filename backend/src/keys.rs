@@ -70,12 +70,18 @@ pub fn generate() -> Result<GeneratedKey> {
         "use": "sig",
     });
     let public_jwk = json!({ "kty": "RSA", "n": n, "e": e, "kid": kid, "alg": ALG, "use": "sig" });
-    Ok(GeneratedKey { kid, private_jwk, public_jwk })
+    Ok(GeneratedKey {
+        kid,
+        private_jwk,
+        public_jwk,
+    })
 }
 
 fn jwk_int(jwk: &Value, member: &str) -> Result<BigUint> {
     let raw = jwk[member].as_str().ok_or_else(|| anyhow!("JWK is missing {member}"))?;
-    Ok(BigUint::from_bytes_be(&b64url_decode(raw).ok_or_else(|| anyhow!("JWK {member} is not base64url"))?))
+    Ok(BigUint::from_bytes_be(
+        &b64url_decode(raw).ok_or_else(|| anyhow!("JWK {member} is not base64url"))?,
+    ))
 }
 
 /// A private JWK as an aws-lc key pair (signing goes through aws-lc, not the `rsa` crate).
@@ -104,7 +110,12 @@ impl Signer {
         );
         let mut signature = vec![0u8; self.pair.public_modulus_len()];
         self.pair
-            .sign(&signature::RSA_PKCS1_SHA256, &aws_lc_rs::rand::SystemRandom::new(), input.as_bytes(), &mut signature)
+            .sign(
+                &signature::RSA_PKCS1_SHA256,
+                &aws_lc_rs::rand::SystemRandom::new(),
+                input.as_bytes(),
+                &mut signature,
+            )
             .map_err(|_| anyhow!("signing failed"))?;
         Ok(format!("{input}.{}", b64url(&signature)))
     }
@@ -179,7 +190,11 @@ const PUBLISHED: &str = "SELECT kid, state, public_jwk, private_jwk_enc FROM sig
 
 impl Keys {
     pub fn new(pool: Pool, root: &[u8]) -> Self {
-        Self { pool, signing_key: crypto::derive_key(root, Purpose::SigningKeys), cache: RwLock::new(None) }
+        Self {
+            pool,
+            signing_key: crypto::derive_key(root, Purpose::SigningKeys),
+            cache: RwLock::new(None),
+        }
     }
 
     async fn insert(&self, state: &str) -> Result<String> {
@@ -199,20 +214,31 @@ impl Keys {
     /// First boot: nobody has cached a JWKS yet, so the first key can sign immediately.
     pub async fn ensure(&self) -> Result<Option<String>> {
         let client = self.pool.get().await?;
-        let active =
-            client.query_opt("SELECT kid FROM signing_keys WHERE alg = $1 AND state = 'active'", &[&ALG]).await?;
+        let active = client
+            .query_opt(
+                "SELECT kid FROM signing_keys WHERE alg = $1 AND state = 'active'",
+                &[&ALG],
+            )
+            .await?;
         drop(client);
         if active.is_some() {
             return Ok(None);
         }
         let kid = self.insert("active").await?;
-        Entry::new("key.activated", Actor::System).target("signing_key", &kid).write(&self.pool.get().await?).await?;
+        Entry::new("key.activated", Actor::System)
+            .target("signing_key", &kid)
+            .write(&self.pool.get().await?)
+            .await?;
         Ok(Some(kid))
     }
 
     pub async fn stage(&self, actor: Actor, user: Option<Uuid>) -> Result<String> {
         let kid = self.insert("staged").await?;
-        Entry::new("key.staged", actor).by(user).target("signing_key", &kid).write(&self.pool.get().await?).await?;
+        Entry::new("key.staged", actor)
+            .by(user)
+            .target("signing_key", &kid)
+            .write(&self.pool.get().await?)
+            .await?;
         Ok(kid)
     }
 
@@ -235,8 +261,16 @@ impl Keys {
             &[&ALG, &retire],
         )
         .await?;
-        tx.execute("UPDATE signing_keys SET state = 'active', activated_at = now() WHERE kid = $1", &[&kid]).await?;
-        Entry::new("key.activated", actor).by(user).target("signing_key", &kid).write(&tx).await?;
+        tx.execute(
+            "UPDATE signing_keys SET state = 'active', activated_at = now() WHERE kid = $1",
+            &[&kid],
+        )
+        .await?;
+        Entry::new("key.activated", actor)
+            .by(user)
+            .target("signing_key", &kid)
+            .write(&tx)
+            .await?;
         tx.commit().await?;
         Ok(Some(kid))
     }
@@ -254,7 +288,10 @@ impl Keys {
             .await?;
         for row in &retired {
             let kid: String = row.get(0);
-            Entry::new("key.retired", Actor::System).target("signing_key", kid).write(&client).await?;
+            Entry::new("key.retired", Actor::System)
+                .target("signing_key", kid)
+                .write(&client)
+                .await?;
             changed = true;
         }
         let stage_hours = policy.stage_hours as i32;
@@ -279,7 +316,9 @@ impl Keys {
                     &[&days],
                 )
                 .await?;
-            let pending = client.query_opt("SELECT kid FROM signing_keys WHERE state = 'staged' LIMIT 1", &[]).await?;
+            let pending = client
+                .query_opt("SELECT kid FROM signing_keys WHERE state = 'staged' LIMIT 1", &[])
+                .await?;
             drop(client);
             if due.is_some() && pending.is_none() {
                 self.stage(Actor::System, None).await?;
@@ -347,13 +386,22 @@ impl Keys {
             }
             keys.push(public_jwk);
         }
-        let snapshot = Arc::new(Snapshot { fingerprint, jwks: json!({ "keys": keys }), signer, verifiers });
+        let snapshot = Arc::new(Snapshot {
+            fingerprint,
+            jwks: json!({ "keys": keys }),
+            signer,
+            verifiers,
+        });
         *self.cache.write().await = Some(snapshot.clone());
         Ok(snapshot)
     }
 
     pub async fn signer(&self) -> Result<Arc<Signer>> {
-        self.snapshot().await?.signer.clone().ok_or_else(|| anyhow!("no active signing key"))
+        self.snapshot()
+            .await?
+            .signer
+            .clone()
+            .ok_or_else(|| anyhow!("no active signing key"))
     }
 }
 
@@ -367,14 +415,25 @@ mod tests {
         assert_eq!(key.public_jwk["kid"], key.kid);
         assert_eq!(
             key.kid,
-            thumbprint(key.public_jwk["e"].as_str().unwrap(), key.public_jwk["n"].as_str().unwrap())
+            thumbprint(
+                key.public_jwk["e"].as_str().unwrap(),
+                key.public_jwk["n"].as_str().unwrap()
+            )
         );
         for member in ["d", "p", "q", "dp", "dq", "qi"] {
             assert!(!key.private_jwk[member].as_str().unwrap().is_empty(), "{member}");
-            assert!(key.public_jwk.get(member).is_none(), "{member} leaked into the public JWK");
+            assert!(
+                key.public_jwk.get(member).is_none(),
+                "{member} leaked into the public JWK"
+            );
         }
-        let signer = Signer { kid: key.kid.clone(), pair: key_pair(&key.private_jwk).unwrap() };
-        let jwt = signer.sign(&json!({ "alg": ALG, "kid": key.kid }), &json!({ "sub": "x" })).unwrap();
+        let signer = Signer {
+            kid: key.kid.clone(),
+            pair: key_pair(&key.private_jwk).unwrap(),
+        };
+        let jwt = signer
+            .sign(&json!({ "alg": ALG, "kid": key.kid }), &json!({ "sub": "x" }))
+            .unwrap();
         let n = b64url_decode(key.public_jwk["n"].as_str().unwrap()).unwrap();
         let e = b64url_decode(key.public_jwk["e"].as_str().unwrap()).unwrap();
         let snapshot = Snapshot {
