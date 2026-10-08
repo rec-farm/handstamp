@@ -21,7 +21,7 @@ use crate::{
     clients::CONSOLE_CLIENT_ID,
     crypto::{csrf_token, csrf_valid},
     enrollment::{self, Enrollment, Profile, SetupError},
-    http::{ApiError, ApiResult, CSRF_HEADER, Limit, Out, Req, request_origin},
+    http::{ApiError, ApiResult, CSRF_HEADER, Limit, Out, Req},
     oidc::{
         authorize::save_grant,
         models::{ConsentResult, Grant, Interaction, InteractionResult, LoginResult},
@@ -94,7 +94,8 @@ pub async fn interaction_result(
             interaction.exp,
         )
         .await?;
-    Ok(format!("{}/auth/{}", request_origin(&req.headers, &app.config.trust_proxy), interaction.uid))
+    let _ = req;
+    Ok(format!("{}/auth/{}", app.issuer, interaction.uid))
 }
 
 /// Ends an interaction with a signed-in account and records it.
@@ -179,7 +180,7 @@ pub async fn pending_enrollment(app: &App, req: &Req, client_id: &str) -> ApiRes
 }
 
 fn limited(app: &App, req: &Req, limit: Limit) -> ApiResult<()> {
-    app.limits.guard(limit, req.ip)
+    app.limits.guard(limit, &req.path, req.ip)
 }
 
 fn reply(result: ApiResult<Out>) -> Response {

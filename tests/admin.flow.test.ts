@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as oidc from 'openid-client';
 import { SoftAuthenticator } from './authenticator.ts';
 import { Browser, startTestServer } from './harness.ts';
@@ -126,20 +126,13 @@ describe('who may use the admin API', () => {
     expect(overview.signingKey.kid).toBeTruthy();
   });
 
-  it('needs the CSRF token and a recent passkey for every change', async () => {
+  // The 5-minute step-up window itself is unit-tested in Rust (console.rs).
+  it('needs the CSRF token for every change', async () => {
     const noCsrf = await admin.hs.request('/api/admin/groups', {
       method: 'POST',
       json: { slug: 'x', name: 'X' },
     });
     expect(noCsrf.status).toBe(403);
-    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 6 * 60 * 1000 });
-    try {
-      const stale = await admin.api('/api/admin/groups', 'POST', { slug: 'x', name: 'X' });
-      expect(stale.status).toBe(403);
-      expect(await stale.json()).toMatchObject({ error: 'step_up_required', method: 'passkey' });
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });
 

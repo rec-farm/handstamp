@@ -153,23 +153,6 @@ pub fn client_ip(trust: &TrustProxy, peer: IpAddr, headers: &HeaderMap) -> IpAdd
     }
 }
 
-/// Like the Koa request behind oidc-provider: the scheme and host the browser used, honoring
-/// X-Forwarded-Proto and X-Forwarded-Host only from a trusted proxy.
-pub fn request_origin(headers: &HeaderMap, trust: &TrustProxy) -> String {
-    let first = |name: &str| {
-        headers
-            .get(name)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.split(',').next())
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty())
-    };
-    let trusted = !matches!(trust, TrustProxy::Off);
-    let proto = if trusted { first("x-forwarded-proto") } else { None }.unwrap_or_else(|| "http".into());
-    let host = if trusted { first("x-forwarded-host") } else { None }.or_else(|| first("host")).unwrap_or_default();
-    format!("{proto}://{host}")
-}
-
 pub fn parse_cookies(headers: &HeaderMap) -> HashMap<String, String> {
     let mut cookies = HashMap::new();
     for value in headers.get_all(header::COOKIE).iter().filter_map(|v| v.to_str().ok()) {
@@ -409,10 +392,20 @@ impl Limit {
     }
 }
 
-/// Fixed windows per (limit, client IP), in memory: one process per instance.
+/// Fixed windows per (route, client IP), in memory: one process per instance. Like
+/// @fastify/rate-limit, each route template has its own budget.
 pub struct RateLimiter {
     scale: f64,
-    windows: Mutex<HashMap<(Limit, IpAddr), (Instant, u32)>>,
+    windows: Mutex<HashMap<(Limit, String, IpAddr), (Instant, u32)>>,
+}
+
+/// The route template for a path: interaction and resume IDs don't make a new bucket.
+fn route_key(path: &str) -> String {
+    let mut parts: Vec<&str> = path.split('/').collect();
+    if parts.len() > 2 && matches!(parts[1], "interaction" | "auth") {
+        parts[2] = ":uid";
+    }
+    parts.join("/")
 }
 
 impl RateLimiter {
@@ -421,14 +414,14 @@ impl RateLimiter {
     }
 
     /// True when this request is within budget.
-    pub fn check(&self, limit: Limit, ip: IpAddr) -> bool {
+    pub fn check(&self, limit: Limit, path: &str, ip: IpAddr) -> bool {
         let (max, window) = limit.budget(self.scale);
         let now = Instant::now();
         let mut windows = self.windows.lock().unwrap();
         if windows.len() > 100_000 {
             windows.retain(|_, (start, _)| now.duration_since(*start) < Duration::from_secs(15 * 60));
         }
-        let entry = windows.entry((limit, ip)).or_insert((now, 0));
+        let entry = windows.entry((limit, route_key(path), ip)).or_insert((now, 0));
         if now.duration_since(entry.0) >= window {
             *entry = (now, 0);
         }
@@ -436,8 +429,8 @@ impl RateLimiter {
         entry.1 <= max
     }
 
-    pub fn guard(&self, limit: Limit, ip: IpAddr) -> Result<(), ApiError> {
-        if self.check(limit, ip) { Ok(()) } else { Err(ApiError::rate_limited()) }
+    pub fn guard(&self, limit: Limit, path: &str, ip: IpAddr) -> Result<(), ApiError> {
+        if self.check(limit, path, ip) { Ok(()) } else { Err(ApiError::rate_limited()) }
     }
 }
 
@@ -474,10 +467,11 @@ mod tests {
     fn rate_limits_per_ip() {
         let limiter = RateLimiter::new(1.0);
         let ip: IpAddr = "1.1.1.1".parse().unwrap();
-        let allowed = (0..35).filter(|_| limiter.check(Limit::Interaction, ip)).count();
+        let allowed = (0..35).filter(|i| limiter.check(Limit::Interaction, &format!("/interaction/{i}/details"), ip)).count();
         assert_eq!(allowed, 30);
-        assert!(limiter.check(Limit::Interaction, "2.2.2.2".parse().unwrap()));
-        assert!(limiter.check(Limit::Token, ip));
+        assert!(limiter.check(Limit::Interaction, "/interaction/x/details", "2.2.2.2".parse().unwrap()));
+        assert!(limiter.check(Limit::Interaction, "/interaction/x/consent", ip));
+        assert!(limiter.check(Limit::Token, "/token", ip));
     }
 
     #[test]

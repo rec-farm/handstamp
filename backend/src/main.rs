@@ -3,6 +3,8 @@
 //! One binary: `handstamp serve` runs the server; the other commands are the operator CLI
 //! (`docker compose exec handstamp handstamp invite`).
 
+#![allow(clippy::result_large_err)]
+
 mod accounts;
 mod admin;
 mod app;

@@ -20,7 +20,7 @@ use super::{
 use crate::{
     app::App,
     crypto::{b64url, constant_time_eq, random_token},
-    http::{Out, Req, request_origin},
+    http::{Out, Req},
 };
 
 /// Tells one app that a session ended (OpenID Back-Channel Logout 1.0). Fire and forget.
@@ -33,19 +33,41 @@ pub fn backchannel(app: &App, client_id: String, account_id: String, sid: String
     });
 }
 
-/// Loopback, private, link-local and other non-public addresses.
-fn private(ip: IpAddr) -> bool {
+/// Anything that isn't a public unicast address: loopback, private, link-local, CGNAT, multicast,
+/// "this network", and IPv6 forms that embed an IPv4 address (mapped, compatible, NAT64, 6to4).
+pub fn private(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
-            v4.is_private() || v4.is_loopback() || v4.is_link_local() || v4.is_unspecified() || v4.is_broadcast()
-                || v4.octets()[0] == 100 && (64..128).contains(&v4.octets()[1])
+            let [a, b, ..] = v4.octets();
+            v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_multicast()
+                || v4.is_documentation()
+                || a == 0
+                || (a == 100 && (64..128).contains(&b))
+                || (a == 192 && b == 0 && v4.octets()[2] == 0)
+                || a >= 240
         }
         IpAddr::V6(v6) => {
+            let s = v6.segments();
             v6.is_loopback()
                 || v6.is_unspecified()
-                || (v6.segments()[0] & 0xfe00) == 0xfc00
-                || (v6.segments()[0] & 0xffc0) == 0xfe80
+                || v6.is_multicast()
+                || (s[0] & 0xfe00) == 0xfc00
+                || (s[0] & 0xffc0) == 0xfe80
+                || s[0] == 0x2002
+                || (s[0] == 0x64 && s[1] == 0xff9b)
+                || (s[0] == 0x2001 && s[1] == 0x0db8)
                 || v6.to_ipv4_mapped().is_some_and(|v4| private(IpAddr::V4(v4)))
+                || (s[..6].iter().all(|x| *x == 0) && private(IpAddr::V4(std::net::Ipv4Addr::new(
+                    (s[6] >> 8) as u8,
+                    s[6] as u8,
+                    (s[7] >> 8) as u8,
+                    s[7] as u8,
+                ))))
         }
     }
 }
@@ -54,18 +76,24 @@ async fn send_backchannel(app: &App, client_id: &str, account_id: &str, sid: &st
     let Some(client) = app.clients.load(client_id).await? else { return Ok(()) };
     let Some(uri) = client.backchannel_logout_uri.clone() else { return Ok(()) };
     let url = url::Url::parse(&uri)?;
-    // Apps on the same private network as Handstamp need ALLOW_PRIVATE_NETWORKS.
-    if !app.config.allow_private_networks {
-        let host = url.host_str().unwrap_or_default().trim_matches(['[', ']']);
-        let port = url.port_or_known_default().unwrap_or(443);
-        let addrs: Vec<IpAddr> = match host.parse::<IpAddr>() {
-            Ok(ip) => vec![ip],
-            Err(_) => tokio::net::lookup_host((host, port)).await?.map(|a| a.ip()).collect(),
-        };
-        if addrs.is_empty() || addrs.iter().any(|ip| private(*ip)) {
-            bail!("refusing to call a private network address (set ALLOW_PRIVATE_NETWORKS=1 to allow)");
-        }
+    // Resolve once, check every address, then connect to exactly the address that was checked, so
+    // a DNS answer that changes between the check and the connection (rebinding) can't slip
+    // through. Apps on the same private network as Handstamp need ALLOW_PRIVATE_NETWORKS.
+    let host = url.host_str().unwrap_or_default().trim_matches(['[', ']']).to_string();
+    let port = url.port_or_known_default().unwrap_or(443);
+    let addrs: Vec<std::net::SocketAddr> = match host.parse::<IpAddr>() {
+        Ok(ip) => vec![(ip, port).into()],
+        Err(_) => tokio::net::lookup_host((host.as_str(), port)).await?.collect(),
+    };
+    let Some(pinned) = addrs.first().copied() else { bail!("{host} did not resolve") };
+    if !app.config.allow_private_networks && addrs.iter().any(|a| private(a.ip())) {
+        bail!("refusing to call a private network address (set ALLOW_PRIVATE_NETWORKS=1 to allow)");
     }
+    let http = reqwest::Client::builder()
+        .user_agent("Handstamp")
+        .redirect(reqwest::redirect::Policy::none())
+        .resolve(&host, pinned)
+        .build()?;
     let iat = now();
     let signer = app.keys.signer().await?;
     let token = signer.sign(
@@ -82,8 +110,7 @@ async fn send_backchannel(app: &App, client_id: &str, account_id: &str, sid: &st
         }),
     )?;
     let body = url::form_urlencoded::Serializer::new(String::new()).append_pair("logout_token", &token).finish();
-    let response = app
-        .http
+    let response = http
         .post(url)
         .header("content-type", "application/x-www-form-urlencoded")
         .body(body)
@@ -187,7 +214,7 @@ async fn end_inner(app: &App, req: &Req, session: &mut Session) -> OidcResult<Ou
         post_logout_redirect_uri: params.get("post_logout_redirect_uri").cloned(),
     });
     session.touched = true;
-    let action = format!("{}/session/end/confirm", request_origin(&req.headers, &app.config.trust_proxy));
+    let action = format!("{}/session/end/confirm", app.issuer);
     if session.account_id.is_none() {
         return Ok(form_post(&action, &[("xsrf", secret), ("logout", "yes".into())]));
     }
@@ -266,7 +293,7 @@ async fn confirm_inner(app: &App, req: &Req, session: &mut Session) -> OidcResul
         session.state = None;
         session.reset_identifier();
     }
-    let origin = request_origin(&req.headers, &app.config.trust_proxy);
+    let origin = &app.issuer;
     let location = match &state.post_logout_redirect_uri {
         Some(uri) => {
             let mut url = url::Url::parse(uri).map_err(|_| OidcError::invalid_request("post_logout_redirect_uri is invalid"))?;
@@ -302,4 +329,22 @@ pub async fn success(State(app): State<App>, req: Req) -> Response {
 
 pub fn _jti() -> String {
     b64url(&crate::crypto::random_bytes::<16>())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::private;
+
+    #[test]
+    fn refuses_non_public_addresses() {
+        for ip in [
+            "127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.1.2.3",
+            "224.0.0.1", "::1", "fd00::1", "fe80::1", "::ffff:10.0.0.1", "64:ff9b::a00:1", "2002:a00:1::", "::10.0.0.1",
+        ] {
+            assert!(private(ip.parse().unwrap()), "{ip}");
+        }
+        for ip in ["93.184.216.34", "2606:4700::1111"] {
+            assert!(!private(ip.parse().unwrap()), "{ip}");
+        }
+    }
 }

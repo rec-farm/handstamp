@@ -325,7 +325,7 @@ async fn list_passkeys(State(app): State<App>, req: Req) -> Response {
 
 async fn passkey_options(State(app): State<App>, req: Req) -> Response {
     reply(async {
-        app.limits.guard(Limit::Interaction, req.ip)?;
+        app.limits.guard(Limit::Interaction, &req.path, req.ip)?;
         let Signed { user, session } = app.signed_in(&req, Need { write: true, step_up: true, admin: false }).await?;
         let handle = match &user.webauthn_user_handle {
             Some(handle) => handle.clone(),
@@ -355,7 +355,7 @@ async fn passkey_options(State(app): State<App>, req: Req) -> Response {
 
 async fn add_passkey(State(app): State<App>, req: Req) -> Response {
     reply(async {
-        app.limits.guard(Limit::Interaction, req.ip)?;
+        app.limits.guard(Limit::Interaction, &req.path, req.ip)?;
         let Signed { user, session } = app.signed_in(&req, Need { write: true, step_up: true, admin: false }).await?;
         let body = req.json();
         let response = CredentialResponse::parse(body.get("response"));
@@ -503,7 +503,7 @@ async fn identities(State(app): State<App>, req: Req) -> Response {
 
 async fn link_identity(State(app): State<App>, Path(slug): Path<String>, req: Req) -> Response {
     reply(async {
-        app.limits.guard(Limit::Interaction, req.ip)?;
+        app.limits.guard(Limit::Interaction, &req.path, req.ip)?;
         let Signed { session, .. } = app.signed_in(&req, Need { write: true, step_up: true, admin: false }).await?;
         let Some((url, cookie)) = crate::upstream::routes::start_link(&app, &slug, &session.sub, &session.uid).await? else {
             return Err(ApiError::new(StatusCode::NOT_FOUND, "not_found", "That sign-in provider is not available."));

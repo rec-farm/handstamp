@@ -1,11 +1,18 @@
+import { execFile, spawn } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import pg from 'pg';
-import { buildApp } from '../src/app.ts';
-import { bootstrap } from '../src/runtime.ts';
+
+// The server under test is the Rust binary (globalSetup builds it). HANDSTAMP_BIN overrides it.
+export const BINARY =
+  process.env.HANDSTAMP_BIN ??
+  fileURLToPath(new URL('../backend/target/debug/handstamp', import.meta.url));
+const WEB_DIST = fileURLToPath(new URL('../apps/web/dist/', import.meta.url));
+const run = promisify(execFile);
 
 export const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? 'postgres://handstamp:handstamp@127.0.0.1:5438/handstamp_test';
@@ -96,32 +103,67 @@ export async function startTestServer(
   const clientsFile = join(dir, 'clients.json');
   writeFileSync(clientsFile, JSON.stringify({ clients: [...CLIENTS, ...clients] }));
   const issuer = `http://localhost:${port}`;
-  const runtime = await bootstrap({
-    NODE_ENV: 'test',
+  const serverEnv: Record<string, string> = {
+    PATH: process.env.PATH ?? '',
+    HANDSTAMP_ENV: 'test',
     DATABASE_URL: databaseUrl,
     HANDSTAMP_ISSUER: issuer,
     HANDSTAMP_SECRET_KEY: Buffer.alloc(32, 9).toString('base64'),
     HANDSTAMP_CLIENTS_FILE: clientsFile,
     HANDSTAMP_DEV_LOGIN: '1',
+    HANDSTAMP_WEB_DIST: web === 'static' ? WEB_DIST : join(dir, 'no-ui'),
+    HOST: '127.0.0.1',
+    PORT: String(port),
     LOG_LEVEL: 'warn',
     ...SECRETS,
     ...env,
-  });
-  const built = await buildApp({
-    ...runtime,
-    web:
-      web === 'static'
-        ? { mode: 'static', distDir: fileURLToPath(new URL('../../web/dist/', import.meta.url)) }
-        : { mode: 'none' },
-  });
-  await built.app.listen({ host: '127.0.0.1', port });
+  };
+  const child = spawn(BINARY, ['serve'], { env: serverEnv, stdio: ['ignore', 'ignore', 'inherit'] });
+  const exited = new Promise<number | null>((resolve) => child.once('exit', resolve));
+  for (let attempt = 0; ; attempt++) {
+    if (child.exitCode !== null) throw new Error(`handstamp exited with ${child.exitCode}`);
+    if (await fetch(`${issuer}/readyz`).then((r) => r.ok, () => false)) break;
+    if (attempt > 300) throw new Error('handstamp did not become ready');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  const pool = new pg.Pool({ connectionString: databaseUrl, max: 2 });
+  // The operator CLI, against the same database (what `handstamp invite` and friends print).
+  const cli = async (...args: string[]) => (await run(BINARY, args, { env: serverEnv })).stdout;
   return {
-    ...runtime,
-    ...built,
     issuer,
+    async sql<T extends Record<string, unknown> = Record<string, unknown>>(text: string, values: unknown[] = []) {
+      return (await pool.query(text, values)).rows as T[];
+    },
+    setup: {
+      async issueCode() {
+        return /Setup code \(60 minutes\): (\S+)/.exec(await cli('setup-code'))?.[1];
+      },
+    },
+    enrollments: {
+      async createInvite(_by?: unknown) {
+        const link = /(http\S+#\S+)/.exec(await cli('invite'))![1];
+        return { link, token: link.split('#')[1] };
+      },
+      async createRecovery(sub: string, { revokeOtherMethods }: { revokeOtherMethods: boolean }) {
+        const out = await cli('recovery', sub, ...(revokeOtherMethods ? ['--revoke'] : []));
+        const link = /(http\S+#\S+)/.exec(out)![1];
+        return { link, token: link.split('#')[1] };
+      },
+    },
+    keys: {
+      async stage(_actor?: unknown) {
+        return /Staged (\S+)\./.exec(await cli('keys', 'rotate'))![1];
+      },
+      async promote(_policy?: unknown, _actor?: unknown) {
+        return /(\S+) is now signing/.exec(await cli('keys', 'promote'))?.[1];
+      },
+    },
+    // Every request reads the current key set from Postgres, so there is nothing to reload.
+    async reloadKeys() {},
     async close() {
-      await built.app.close();
-      await runtime.pool.end();
+      child.kill('SIGTERM');
+      await exited;
+      await pool.end();
     },
   };
 }

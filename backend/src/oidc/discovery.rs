@@ -10,13 +10,13 @@ use serde_json::{Value, json};
 use crate::{
     accounts::CLAIMS_SUPPORTED,
     app::App,
-    http::{Out, Req, request_origin},
+    http::Out,
 };
 
-/// Endpoint URLs follow the request (Host, or X-Forwarded-* from a trusted proxy) like Koa did;
-/// the issuer is always the configured one.
-pub fn document(issuer: &str, origin: &str) -> Value {
-    let at = |path: &str| format!("{origin}{path}");
+/// Every endpoint lives under the configured issuer. URLs are never built from the Host header,
+/// so a forged Host can't put someone else's endpoints in the document.
+pub fn document(issuer: &str) -> Value {
+    let at = |path: &str| format!("{issuer}{path}");
     json!({
         "authorization_endpoint": at("/auth"),
         "claims_parameter_supported": true,
@@ -44,9 +44,8 @@ pub fn document(issuer: &str, origin: &str) -> Value {
     })
 }
 
-pub async fn discovery(State(app): State<App>, req: Req) -> Response {
-    let origin = request_origin(&req.headers, &app.config.trust_proxy);
-    Out::json(StatusCode::OK, &document(&app.issuer, &origin))
+pub async fn discovery(State(app): State<App>) -> Response {
+    Out::json(StatusCode::OK, &document(&app.issuer))
         .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .into_response()
 }

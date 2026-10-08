@@ -1,6 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { eq, sql } from 'drizzle-orm';
-import { auditLog, identities, instanceSettings, passkeys, users } from '@handstamp/db';
 import { SoftAuthenticator } from './authenticator.ts';
 import { Browser, freePort, startTestServer } from './harness.ts';
 import { mockGitHub, mockOidcIssuer, type GitHubUser, type MockAccount } from './mocks.ts';
@@ -39,7 +37,7 @@ beforeAll(async () => {
       HANDSTAMP_UPSTREAM_GITHUB_API_URL: `${github.url}/api/v3`,
     },
   });
-  await server.db.update(instanceSettings).set({ setupCompletedAt: new Date() });
+  await server.sql('UPDATE instance_settings SET setup_completed_at = now()');
 });
 
 afterAll(async () => {
@@ -117,10 +115,7 @@ const githubUser = (login: string, email: string): GitHubUser => ({
 let graceGithub: GitHubUser;
 
 async function userByEmail(email: string) {
-  const [user] = await server.db
-    .select()
-    .from(users)
-    .where(sql`lower(${users.email}) = ${email}`);
+  const [user] = await server.sql<{ id: string }>('SELECT id FROM users WHERE lower(email) = $1', [email]);
   return user;
 }
 
@@ -176,7 +171,10 @@ describe('threat: account takeover via email (§3.3)', () => {
     expect(url.searchParams.get('error')).toBe('unlinked_identity');
     expect((await attacker.hs.request('/api/me')).status).toBe(401);
     const ada = await userByEmail('ada@corp.example');
-    const linked = await server.db.select().from(identities).where(eq(identities.userId, ada.id));
+    const linked = await server.sql<{ issuer: string }>(
+      'SELECT issuer FROM identities WHERE user_id = $1',
+      [ada.id],
+    );
     expect(linked.map((i) => i.issuer)).toEqual([corp.issuer]);
   });
 
@@ -188,11 +186,10 @@ describe('threat: account takeover via email (§3.3)', () => {
     const ada = await userByEmail('ada@corp.example');
     expect(me.user.sub).not.toBe(ada.id);
     expect(me.user.email).toBeNull();
-    const conflicts = await server.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, 'user.email_conflict'));
-    expect(conflicts.some((c) => c.targetId === me.user.sub)).toBe(true);
+    const conflicts = await server.sql<{ target_id: string }>(
+      "SELECT target_id FROM audit_log WHERE action = 'user.email_conflict'",
+    );
+    expect(conflicts.some((c) => c.target_id === me.user.sub)).toBe(true);
   });
 });
 
@@ -336,7 +333,6 @@ describe('threat: lost passkey (§3.3)', () => {
     // The laptop is lost. An admin issues a recovery link that revokes old methods.
     const { token } = await server.enrollments.createRecovery(rosa.sub, {
       revokeOtherMethods: true,
-      actorType: 'admin',
     });
     const phone = person();
     expect(
@@ -358,7 +354,7 @@ describe('threat: lost passkey (§3.3)', () => {
 
     // The lost laptop's session is over and its passkey no longer exists.
     expect((await laptop.hs.request('/api/me')).status).toBe(401);
-    const keys = await server.db.select().from(passkeys).where(eq(passkeys.userId, rosa.sub));
+    const keys = await server.sql('SELECT id FROM passkeys WHERE user_id = $1', [rosa.sub]);
     expect(keys).toHaveLength(1);
     const tryOld = await person().interaction();
     const oldOptions = await (await tryOld.post('passkey/options')).json();
@@ -368,10 +364,9 @@ describe('threat: lost passkey (§3.3)', () => {
 
     // And the new passkey signs in normally.
     expect((await person().viaPasskey(newKey)).pathname).toBe('/account');
-    const used = await server.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, 'recovery.used'));
-    expect(used.some((u) => u.actorUserId === rosa.sub)).toBe(true);
+    const used = await server.sql<{ actor_user_id: string }>(
+      "SELECT actor_user_id FROM audit_log WHERE action = 'recovery.used'",
+    );
+    expect(used.some((u) => u.actor_user_id === rosa.sub)).toBe(true);
   });
 });

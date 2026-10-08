@@ -255,17 +255,6 @@ describe('account API', () => {
     );
   });
 
-  it('asks for a fresh sign-in before changing passkeys after 5 minutes (step-up)', async () => {
-    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 6 * 60 * 1000 });
-    try {
-      const response = await api(admin, '/api/me/passkeys/options', { method: 'POST', json: {} });
-      expect(response.status).toBe(403);
-      expect((await response.json()).error).toBe('step_up_required');
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it('lists sessions with the apps signed into them', async () => {
     const sessions = await (await admin.request('/api/me/sessions')).json();
     const current = sessions.find((s: { current: boolean }) => s.current);
