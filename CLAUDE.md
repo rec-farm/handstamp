@@ -14,7 +14,7 @@ The passwordless OpenID Connect provider for the R.E.C. product family (RECIAM S
 
 ## Hard rules
 
-- Never hand-roll the protocol: `oidc-provider` owns every OIDC endpoint, and `openid-client` handles upstream IdPs.
+- The provider is Rust (`backend/`), written to oidc-provider 9's behaviour (docs/RUST-PORT.md). Every protocol change keeps the full OpenID conformance run green with no new accepted gaps, and lands with a flow test in `tests/`. Upstream IdPs go through the `openidconnect` crate; don't hand-roll client-side OIDC.
 - Identity is `(issuer, subject)`. Never link or merge accounts by email.
 - No passwords, OTP, SMS, magic links or any other human shared secret.
 - Secrets never reach logs. The one-time setup banner is the only exception.
@@ -23,4 +23,5 @@ The passwordless OpenID Connect provider for the R.E.C. product family (RECIAM S
 
 - The production CSP is `script-src 'self'` + one hash and `style-src 'self'`: no inline `<script>`, no React `style={…}` props. Use Tailwind classes.
 - Protocol changes must keep the OpenID conformance suite green: `./conformance/run.sh` (smoke) or `./conformance/run.sh full`. Accepted gaps live in `conformance/expected-*.json`, each with a reason.
-- `pnpm check` runs typecheck, tests and build. Integration tests need the dev Postgres (`compose.yaml`) and a `handstamp_test` database.
+- `pnpm check` runs `cargo fmt`/clippy (`-D warnings`), typecheck, the Rust unit tests, the flow tests in `tests/` (against a debug build of the binary) and the build. Flow tests need the dev Postgres (`compose.yaml`) and a `handstamp_test` database.
+- The server is `backend/` (Rust, axum). The UI is `apps/web` (Vite); in development Vite fronts the Rust server on one origin (`scripts/dev.ts`). Migrations are `backend/migrations/*.sql`, embedded at build time; never edit a shipped one, add the next number.

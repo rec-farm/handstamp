@@ -1,0 +1,17 @@
+{
+  "name": "@handstamp/tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Black-box flow and browser tests against the handstamp binary.",
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@types/oidc-provider": "^9.12.1",
+    "@types/pg": "^8.23.1",
+    "oidc-provider": "9.12.2",
+    "openid-client": "6.8.8",
+    "pg": "^8.23.1"
+  }
+}

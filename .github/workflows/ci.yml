@@ -23,6 +23,12 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
       - uses: pnpm/action-setup@v6
         with:
           version: 11.9.0
@@ -32,7 +38,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
+      - run: pnpm backend:check
       - run: pnpm typecheck
+      # Rust unit tests, then the flow tests against the binary.
       - run: pnpm test
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium

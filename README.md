@@ -14,13 +14,13 @@ or Zitadel without touching the app.
 
 ## Develop
 
-Needs Node 24, pnpm 11 and Docker.
+Needs Rust 1.92, Node 24, pnpm 11 and Docker.
 
 ```sh
 pnpm install
 cp .env.example .env              # then set HANDSTAMP_SECRET_KEY (openssl rand -base64 32)
 docker compose up db              # Postgres on 127.0.0.1:5438
-pnpm dev                          # http://localhost:3000, one process (Fastify + Vite)
+pnpm dev                          # http://localhost:3000: Vite in front, the Rust server behind it
 ```
 
 On first start Handstamp prints a one-time setup code. Open http://localhost:3000, enter it,
@@ -57,13 +57,13 @@ The integration tests need the test database: `docker compose exec db psql -U ha
 
 ## Layout
 
-| Path            | What                                                                 |
-| --------------- | -------------------------------------------------------------------- |
-| `apps/server`   | Fastify: `oidc-provider`, the interaction API, the built UI, the CLI |
-| `apps/web`      | Vite + React SPA: sign-in, consent, account, admin console           |
-| `packages/core` | Domain logic with no framework code                                  |
-| `packages/db`   | Postgres schema, SQL migrations, the `oidc-provider` storage adapter |
-| `conformance`   | Pinned OIDF conformance suite setup                                  |
+| Path                 | What                                                                               |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| `backend`            | Rust (axum): the OpenID provider, the interaction, account and admin APIs, the CLI |
+| `backend/migrations` | Postgres migrations, embedded in the binary                                        |
+| `apps/web`           | Vite + React SPA: sign-in, consent, account, admin console                         |
+| `tests`              | Black-box flow tests and Chromium e2e tests against the `handstamp` binary         |
+| `conformance`        | Pinned OIDF conformance suite setup                                                |
 
 ## License
 

@@ -11,3 +11,6 @@ conformance/results/
 # Local declared clients (compose mounts ./config at /config)
 /config/*
 !/config/README.md
+
+# Rust (backend/)
+backend/target/
