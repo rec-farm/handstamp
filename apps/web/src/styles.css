@@ -529,19 +529,6 @@
   }
 }
 
-/* The wordmark until the outlined asset exists.
-   TODO(brand): replace with the outlined HANDSTAMP lockup from rec-brand/build.py (§2.10). */
-@utility wordmark {
-  font-family: var(--font-display);
-  font-stretch: 125%;
-  font-variation-settings: 'wdth' 125;
-  font-weight: 700;
-  font-size: var(--text-wordmark);
-  line-height: 1;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
 /* Text input (DESIGN §10.2): surface-2 in dark, paper-50 in light, input border, purple focus. */
 @utility input {
   display: block;
