@@ -118,23 +118,31 @@ export async function startTestServer(
     ...SECRETS,
     ...env,
   };
-  const child = spawn(BINARY, ['serve'], {
-    env: serverEnv,
-    stdio: ['ignore', 'ignore', 'inherit'],
-  });
-  const exited = new Promise<number | null>((resolve) => child.once('exit', resolve));
-  for (let attempt = 0; ; attempt++) {
-    if (child.exitCode !== null) throw new Error(`handstamp exited with ${child.exitCode}`);
-    if (
-      await fetch(`${issuer}/readyz`).then(
-        (r) => r.ok,
-        () => false,
+  const processes: { kill(): void; exited: Promise<unknown> }[] = [];
+  // Starts `handstamp serve` with this env on a port and waits until it answers /readyz.
+  async function serve(env: Record<string, string>, listen: number) {
+    const child = spawn(BINARY, ['serve'], {
+      env: { ...env, PORT: String(listen) },
+      stdio: ['ignore', 'ignore', 'inherit'],
+    });
+    const exited = new Promise<number | null>((resolve) => child.once('exit', resolve));
+    processes.push({ kill: () => child.kill('SIGTERM'), exited });
+    const origin = `http://localhost:${listen}`;
+    for (let attempt = 0; ; attempt++) {
+      if (child.exitCode !== null) throw new Error(`handstamp exited with ${child.exitCode}`);
+      if (
+        await fetch(`${origin}/readyz`).then(
+          (r) => r.ok,
+          () => false,
+        )
       )
-    )
-      break;
-    if (attempt > 300) throw new Error('handstamp did not become ready');
-    await new Promise((resolve) => setTimeout(resolve, 100));
+        break;
+      if (attempt > 300) throw new Error('handstamp did not become ready');
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return origin;
   }
+  await serve(serverEnv, port);
   const pool = new pg.Pool({ connectionString: databaseUrl, max: 2 });
   // The operator CLI, against the same database (what `handstamp invite` and friends print).
   const cli = async (...args: string[]) => (await run(BINARY, args, { env: serverEnv })).stdout;
@@ -170,11 +178,16 @@ export async function startTestServer(
         return /(\S+) is now signing/.exec(await cli('keys', 'promote'))?.[1];
       },
     },
+    // A second process on the same database and issuer, as a second replica would be (R5).
+    // Returns its own origin, to send requests to it directly.
+    async replica() {
+      return serve(serverEnv, await freePort());
+    },
     // Every request reads the current key set from Postgres, so there is nothing to reload.
     async reloadKeys() {},
     async close() {
-      child.kill('SIGTERM');
-      await exited;
+      for (const p of processes) p.kill();
+      await Promise.all(processes.map((p) => p.exited));
       await pool.end();
     },
   };

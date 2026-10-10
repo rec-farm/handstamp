@@ -45,6 +45,26 @@ pub struct Setup {
     pool: Pool,
 }
 
+/// What first-run setup did at boot.
+pub enum BootCode {
+    Issued(String),
+    /// Another process printed a code within SETUP_CODE_KEEP_SECONDS; it still works.
+    Recent,
+    Claimed,
+}
+
+impl BootCode {
+    fn code(self) -> Option<String> {
+        match self {
+            BootCode::Issued(code) => Some(code),
+            _ => None,
+        }
+    }
+}
+
+const SETUP_LOCK: i64 = 4_26_19_79;
+const SETUP_CODE_KEEP_SECONDS: f64 = 30.0;
+
 impl Setup {
     pub fn new(pool: Pool) -> Self {
         Self { pool }
@@ -59,15 +79,38 @@ impl Setup {
             .is_some())
     }
 
-    /// A fresh code on every boot (and from the CLI) until someone claims the instance. Earlier
-    /// unused codes stop working.
+    /// A fresh code from the CLI until someone claims the instance. Earlier unused codes stop
+    /// working.
     pub async fn issue_code(&self) -> Result<Option<String>> {
+        Ok(self.issue(false).await?.code())
+    }
+
+    /// A fresh code on boot, unless another replica printed one moments ago: replicas that start
+    /// together would otherwise each print a code and cancel the others' (R5).
+    pub async fn issue_boot_code(&self) -> Result<BootCode> {
+        self.issue(true).await
+    }
+
+    async fn issue(&self, keep_recent: bool) -> Result<BootCode> {
         if self.claimed().await? {
-            return Ok(None);
+            return Ok(BootCode::Claimed);
         }
-        let code = new_setup_code();
         let mut db = self.pool.get().await?;
         let tx = db.transaction().await?;
+        tx.execute("SELECT pg_advisory_xact_lock($1)", &[&SETUP_LOCK]).await?;
+        if keep_recent
+            && tx
+                .query_opt(
+                    "SELECT 1 FROM enrollment_tokens WHERE purpose = 'setup' AND consumed_at IS NULL \
+                     AND expires_at > now() AND created_at > now() - make_interval(secs => $1)",
+                    &[&SETUP_CODE_KEEP_SECONDS],
+                )
+                .await?
+                .is_some()
+        {
+            return Ok(BootCode::Recent);
+        }
+        let code = new_setup_code();
         tx.execute(
             "DELETE FROM enrollment_tokens WHERE purpose = 'setup' AND consumed_at IS NULL",
             &[],
@@ -80,7 +123,7 @@ impl Setup {
         )
         .await?;
         tx.commit().await?;
-        Ok(Some(code))
+        Ok(BootCode::Issued(code))
     }
 
     /// Binds a valid code to the interaction that proved it. The lookup is by hash.

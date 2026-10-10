@@ -114,7 +114,7 @@ fn missing(name: &str) -> OidcError {
 
 /// GET or POST /auth. POST is on for https issuers only (R16).
 pub async fn authorization(State(app): State<App>, req: Req) -> Response {
-    if !app.limits.check(Limit::Authorization, &req.path, req.ip) {
+    if !app.limits.check(Limit::Authorization, &req.path, req.ip).await {
         return crate::http::ApiError::rate_limited().into_response();
     }
     if req.method == Method::POST && !app.config.https() {
@@ -162,7 +162,7 @@ pub async fn authorization(State(app): State<App>, req: Req) -> Response {
 
 /// GET /auth/:uid: back from an interaction.
 pub async fn resume(State(app): State<App>, Path(uid): Path<String>, req: Req) -> Response {
-    if !app.limits.check(Limit::Authorization, &req.path, req.ip) {
+    if !app.limits.check(Limit::Authorization, &req.path, req.ip).await {
         return crate::http::ApiError::rate_limited().into_response();
     }
     let mut ctx = Ctx {

@@ -38,7 +38,7 @@ use crate::{
     audit::Actor,
     clients::{Clients, console_client, console_secret},
     config::Config,
-    enrollment::{Enrollments, RECOVERY_MINUTES, Setup},
+    enrollment::{BootCode, Enrollments, RECOVERY_MINUTES, Setup},
     keys::Keys,
     upstream::providers::Providers,
 };
@@ -179,11 +179,15 @@ async fn serve(config: Config) -> Result<ExitCode> {
     let app = App::new(config.clone(), boot.pool.clone(), shell, boot.test_user);
 
     // The setup code is the only secret Handstamp ever prints, once, outside request logging.
-    if let Some(code) = app.setup.issue_code().await? {
-        print!(
+    match app.setup.issue_boot_code().await? {
+        BootCode::Issued(code) => print!(
             "\n  Handstamp has no admin yet. Open {}/setup and enter this code:\n\n      {code}\n\n  It works for 60 minutes. Restart Handstamp or run \"handstamp setup-code\" for a new one.\n\n",
             app.issuer
-        );
+        ),
+        BootCode::Recent => print!(
+            "\n  Handstamp has no admin yet. Another Handstamp process printed a setup code moments ago: use that one,\n  or run \"handstamp setup-code\" for a new one.\n\n"
+        ),
+        BootCode::Claimed => {}
     }
 
     let scheduler = tokio::spawn(schedule(app.clone()));
@@ -236,7 +240,7 @@ async fn tick(app: &App) -> Result<()> {
         if app.keys.tick(&app.config.rotation()).await? {
             tracing::info!("signing keys changed");
         }
-        let removed = oidc::store::delete_expired(&app.pool).await?;
+        let removed = oidc::store::delete_expired(&app.pool).await? + app.limits.prune().await?;
         if removed > 0 {
             tracing::debug!(removed, "expired protocol state removed");
         }

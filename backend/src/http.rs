@@ -4,8 +4,8 @@
 use std::{
     collections::HashMap,
     net::{IpAddr, SocketAddr},
-    sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    sync::Arc,
+    time::Duration,
 };
 
 use axum::{
@@ -14,6 +14,7 @@ use axum::{
     http::{HeaderMap, HeaderValue, Method, StatusCode, header},
     response::{IntoResponse, Response},
 };
+use deadpool_postgres::Pool;
 use serde_json::{Value, json};
 
 use crate::{app::App, config::TrustProxy};
@@ -432,13 +433,12 @@ impl Limit {
     }
 }
 
-type WindowKey = (Limit, String, IpAddr);
-
-/// Fixed windows per (route, client IP), in memory: one process per instance. Like
-/// @fastify/rate-limit, each route template has its own budget.
+/// Fixed windows per (route, client IP), kept in Postgres so every replica shares one budget (R5).
+/// Like @fastify/rate-limit, each route template has its own budget, and a window starts with
+/// its first request.
 pub struct RateLimiter {
     scale: f64,
-    windows: Mutex<HashMap<WindowKey, (Instant, u32)>>,
+    pool: Pool,
 }
 
 /// Words that appear in rate-limited routes. Anything else in a path (IDs, slugs, junk) collapses
@@ -484,35 +484,58 @@ fn route_key(path: &str) -> String {
 }
 
 impl RateLimiter {
-    pub fn new(scale: f64) -> Arc<Self> {
-        Arc::new(Self {
-            scale,
-            windows: Mutex::new(HashMap::new()),
-        })
+    pub fn new(scale: f64, pool: Pool) -> Arc<Self> {
+        Arc::new(Self { scale, pool })
     }
 
-    /// True when this request is within budget.
-    pub fn check(&self, limit: Limit, path: &str, ip: IpAddr) -> bool {
+    /// True when this request is within budget. If Postgres can't answer, the request goes through:
+    /// it would fail at its own first query anyway, and an outage shouldn't look like an attack.
+    pub async fn check(&self, limit: Limit, path: &str, ip: IpAddr) -> bool {
         let (max, window) = limit.budget(self.scale);
-        let now = Instant::now();
-        let mut windows = self.windows.lock().unwrap();
-        if windows.len() > 100_000 {
-            windows.retain(|_, (start, _)| now.duration_since(*start) < Duration::from_secs(15 * 60));
+        let key = format!("{limit:?} {} {ip}", route_key(path));
+        match self.hit(&key, window).await {
+            Ok(hits) => hits <= max as i32,
+            Err(error) => {
+                tracing::warn!(error = %format!("{error:#}"), "rate limit check failed; allowing the request");
+                true
+            }
         }
-        let entry = windows.entry((limit, route_key(path), ip)).or_insert((now, 0));
-        if now.duration_since(entry.0) >= window {
-            *entry = (now, 0);
-        }
-        entry.1 += 1;
-        entry.1 <= max
     }
 
-    pub fn guard(&self, limit: Limit, path: &str, ip: IpAddr) -> Result<(), ApiError> {
-        if self.check(limit, path, ip) {
+    async fn hit(&self, key: &str, window: Duration) -> anyhow::Result<i32> {
+        let db = self.pool.get().await?;
+        let row = db
+            .query_one(
+                "INSERT INTO rate_limits (key, started, hits) VALUES ($1, now(), 1) \
+                 ON CONFLICT (key) DO UPDATE SET \
+                   started = CASE WHEN rate_limits.started <= now() - make_interval(secs => $2) \
+                             THEN now() ELSE rate_limits.started END, \
+                   hits = CASE WHEN rate_limits.started <= now() - make_interval(secs => $2) \
+                          THEN 1 ELSE rate_limits.hits + 1 END \
+                 RETURNING hits",
+                &[&key, &window.as_secs_f64()],
+            )
+            .await?;
+        Ok(row.get(0))
+    }
+
+    pub async fn guard(&self, limit: Limit, path: &str, ip: IpAddr) -> Result<(), ApiError> {
+        if self.check(limit, path, ip).await {
             Ok(())
         } else {
             Err(ApiError::rate_limited())
         }
+    }
+
+    /// Windows older than the longest budget (15 minutes) can't matter any more.
+    pub async fn prune(&self) -> anyhow::Result<u64> {
+        let db = self.pool.get().await?;
+        Ok(db
+            .execute(
+                "DELETE FROM rate_limits WHERE started < now() - interval '15 minutes'",
+                &[],
+            )
+            .await?)
     }
 }
 
@@ -555,20 +578,14 @@ mod tests {
     }
 
     #[test]
-    fn rate_limits_per_ip() {
-        let limiter = RateLimiter::new(1.0);
-        let ip: IpAddr = "1.1.1.1".parse().unwrap();
-        let allowed = (0..35)
-            .filter(|i| limiter.check(Limit::Interaction, &format!("/interaction/{i}/details"), ip))
-            .count();
+    fn rate_limit_keys_ignore_ids() {
+        // Counting itself is a flow test (tests/oidc.flow.test.ts), since it lives in Postgres.
         assert_eq!(
             route_key("/interaction/abc/upstream/anything"),
             "/interaction/:/upstream/:"
         );
-        assert_eq!(allowed, 30);
-        assert!(limiter.check(Limit::Interaction, "/interaction/x/details", "2.2.2.2".parse().unwrap()));
-        assert!(limiter.check(Limit::Interaction, "/interaction/x/consent", ip));
-        assert!(limiter.check(Limit::Token, "/token", ip));
+        assert_eq!(route_key("/interaction/a/details"), route_key("/interaction/b/details"));
+        assert_ne!(route_key("/interaction/a/details"), route_key("/interaction/a/consent"));
     }
 
     #[test]
