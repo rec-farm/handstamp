@@ -464,6 +464,7 @@ Rules for app authors:
 - Key users on **`(iss, sub)`**. Don't link or merge accounts by email.
 - Use PKCE (S256), and verify `iss` and `nonce`.
 - Read roles from `OIDC_ROLES_CLAIM` at every sign-in, so group changes take effect on the next sign-in.
+- Register a back-channel logout URI so sign-outs at Handstamp reach the app, and only redirect to own-origin paths after sign-in. [INTEGRATING.md](INTEGRATING.md#signing-out) has the `logout_token` contents and the return-path checks.
 
 ### 6.2 Worked example: Paramtune
 
