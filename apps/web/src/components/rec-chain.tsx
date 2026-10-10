@@ -1,6 +1,6 @@
 import { useId } from 'react';
 
-// The REC chain (DESIGN §2.1, §2.5), from rec-brand logos/rec-lockup-cream.svg, brand v1.6.0.
+// The REC chain (DESIGN §2.1, §2.5), from rec-brand logos/rec-lockup-cream.svg, brand v1.7.0.
 // The viewBox is cropped to the cap height, so `h-2` gives the 8px chain of the "by REC" lockup.
 // Generated: don't edit the paths, re-copy them from rec-brand when the chain changes.
 export function RecChain({ className = '' }: { className?: string }) {
