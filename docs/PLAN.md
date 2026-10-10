@@ -468,7 +468,7 @@ Rules for app authors:
 
 ### 6.2 Worked example: Paramtune
 
-Paramtune signs in with Handstamp since its Rust backend (Paramtune #267, roles from groups in #279, per-platform editors in #281). It uses the `openidconnect` crate with PKCE, keys users on `(iss, sub)`, and reads roles from the groups claim at every sign-in. Its own [DEPLOYMENT.md](https://github.com/RodrigoEspinosa/paramtune/blob/master/docs/DEPLOYMENT.md) is the reference; this is the Handstamp side.
+Paramtune signs in with Handstamp since its Rust backend (Paramtune #267, roles from groups in #279, per-platform editors in #281). It uses the `openidconnect` crate with PKCE, keys users on `(iss, sub)`, and reads roles from the groups claim at every sign-in. Its own [DEPLOYMENT.md](https://github.com/rec-farm/paramtune/blob/master/docs/DEPLOYMENT.md) is the reference; this is the Handstamp side.
 
 **In Handstamp** (Admin → Apps → Add app):
 
