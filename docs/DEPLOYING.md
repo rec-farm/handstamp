@@ -212,8 +212,10 @@ and returns 503 when it can't reach it. The image's `HEALTHCHECK` uses `/readyz`
 **Back-channel logout to apps on a private network.** When someone signs out, Handstamp calls
 each app's back-channel logout URI. By default it refuses loopback and private addresses, so a
 request can't be pointed at your internal network. If your apps run next to Handstamp on the same
-Docker network and you register internal URLs (`http://paramtune:3000/…`), set
-`ALLOW_PRIVATE_NETWORKS=true`. Public URLs don't need it.
+Docker network and you register internal URLs, set `ALLOW_PRIVATE_NETWORKS=true`. Public URLs
+don't need it. The URI must still be `https://` (plain `http://` is only accepted for `localhost`
+and `*.localhost`), so an internal URL needs TLS on that network; otherwise register the app's
+public URL. What apps receive is in [Integrating → Signing out](INTEGRATING.md#signing-out).
 
 **Clients as code.** Apps can be declared in a JSON file instead of the admin UI
 (`HANDSTAMP_CLIENTS_FILE`, see [`examples/clients.json`](../examples/clients.json)). Each entry
