@@ -4,7 +4,7 @@ The passwordless OpenID Connect provider for the R.E.C. product family (RECIAM S
 
 ## Design system (mandatory)
 
-- Source of truth: `/Users/rec/Projects/reciam-brand/DESIGN.md` (repo `RodrigoEspinosa/rec-brand`, tokens copied at **brand v1.6.0**).
+- Source of truth: `/Users/rec/Projects/rec-farm/rec-brand/DESIGN.md` (repo `RodrigoEspinosa/rec-brand`, tokens copied at **brand v1.6.0**).
 - **Every UI change must pass the review checklist in DESIGN.md §16** before it ships. Check Dark and Paper.
 - Tokens: copy the §14 Tailwind v4 block into `apps/web/src/styles.css`. Don't use submodules or symlinks. Record `brand v1.6.0` wherever tokens or assets are copied.
 - Signature accent: **Lilac** (`data-product="handstamp"`). It marks active nav and product identity only. Buttons, links and focus rings stay purple.
