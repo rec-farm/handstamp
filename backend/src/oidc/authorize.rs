@@ -17,7 +17,7 @@ use regex::Regex;
 use serde_json::{Map, Value, json};
 
 use super::{
-    OidcError, OidcResult, RequestedClaims,
+    OidcError, OidcResult, RequestedClaims, acr,
     models::{Code, Grant, Interaction, InteractionResult, Prompt, Session},
     respond,
     store::{self, CODE, Columns, GRANT, INTERACTION, now, token_id},
@@ -31,7 +31,7 @@ use crate::{
 };
 
 /// Parameters the authorization endpoint reads. Anything else is ignored.
-const PARAMS: [&str; 22] = [
+const PARAMS: [&str; 21] = [
     "acr_values",
     "claims",
     "claims_locales",
@@ -53,8 +53,6 @@ const PARAMS: [&str; 22] = [
     "scope",
     "state",
     "ui_locales",
-    // Console step-up asks the sign-in card for a passkey specifically.
-    "handstamp_method",
 ];
 
 const RESPONSE_MODES: [&str; 3] = ["query", "fragment", "form_post"];
@@ -620,6 +618,10 @@ async fn proceed(
         {
             reasons.push("claims_id_token_sub_value");
         }
+        // A level the request asks for and this sign-in doesn't reach (R11): sign in again.
+        if account.is_some() && !acr::satisfied(session.amr.as_deref(), &ctx.params) {
+            reasons.push("acr_values");
+        }
         if !reasons.is_empty() {
             let mut details = Map::new();
             for key in ["max_age", "login_hint", "id_token_hint"] {
@@ -632,6 +634,7 @@ async fn proceed(
                 "no_session" => "End-User authentication is required",
                 "max_age" => "End-User authentication could not be obtained",
                 "id_token_hint" => "id_token_hint and authenticated subject do not match",
+                "acr_values" => "requested ACR could not be obtained",
                 _ => "requested subject could not be obtained",
             };
             check = Some(Check {

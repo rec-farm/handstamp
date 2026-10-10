@@ -107,6 +107,7 @@ describe('discovery', () => {
     );
     expect(meta.end_session_endpoint).toBe(`${server.issuer}/session/end`);
     expect(meta.backchannel_logout_supported).toBe(true);
+    expect(meta.acr_values_supported).toEqual(['phr', '0']);
   });
 });
 
@@ -119,6 +120,7 @@ describe('authorization code flow', () => {
     );
     const claims = tokens.claims()!;
     expect(claims.iss).toBe(server.issuer);
+    expect(claims.acr).toBe('0'); // not a passkey sign-in (R11)
     expect(claims.groups).toEqual([]);
     expect(claims.email).toBeUndefined(); // scope=email means userinfo access (OIDC Core 5.4)
     expect(tokens.refresh_token).toBeTruthy(); // session-bound: the client may refresh
@@ -357,6 +359,83 @@ describe('headers', () => {
       expect(cookie.toLowerCase()).toContain('httponly');
       expect(cookie.toLowerCase()).toContain('samesite=lax');
     }
+  });
+});
+
+describe('acr_values (R11)', () => {
+  async function start(browser: Browser, params: Record<string, string>) {
+    const config = await relyingParty('rp-first', SECRETS.RP_FIRST_SECRET);
+    const verifier = oidc.randomPKCECodeVerifier();
+    const url = oidc.buildAuthorizationUrl(config, {
+      redirect_uri: 'https://rp.example/cb',
+      scope: 'openid',
+      code_challenge: await oidc.calculatePKCECodeChallenge(verifier),
+      code_challenge_method: 'S256',
+      ...params,
+    });
+    return { config, verifier, ...(await browser.follow(url.href)) };
+  }
+
+  it('meets a request any sign-in reaches, and says which level it was', async () => {
+    const browser = new Browser(server.issuer);
+    const config = await relyingParty('rp-first', SECRETS.RP_FIRST_SECRET);
+    await signIn(browser, config, {
+      redirect_uri: 'https://rp.example/cb',
+      scope: 'openid',
+      code_challenge: 'x'.repeat(43),
+      code_challenge_method: 'S256',
+    });
+
+    // Signed in with the test account (level 0): "phr 0" is met without signing in again.
+    const again = await start(browser, { acr_values: 'phr 0' });
+    expect(again.location?.origin).toBe('https://rp.example');
+    const tokens = await oidc.authorizationCodeGrant(config, again.location!, {
+      pkceCodeVerifier: again.verifier,
+    });
+    expect(tokens.claims()!.acr).toBe('0');
+
+    // Values Handstamp doesn't know are ignored.
+    const unknown = await start(browser, { acr_values: 'urn:example:gold' });
+    expect(unknown.location?.searchParams.get('code')).toBeTruthy();
+  });
+
+  it('asks for a passkey when an app wants phr, and refuses the test account', async () => {
+    const browser = new Browser(server.issuer);
+    const { location } = await start(browser, { acr_values: 'phr' });
+    expect(location).toBeUndefined();
+    const uid = browser.cookies.get('hs_interaction')!.value;
+    const details = await (await browser.request(`/interaction/${uid}/details`)).json();
+    expect(details).toMatchObject({ passkeyOnly: true, stepUp: false, providers: [] });
+    const login = await browser.request(`/interaction/${uid}/dev-login`, {
+      method: 'POST',
+      json: {},
+      headers: { 'x-handstamp-csrf': details.csrf },
+    });
+    expect(login.status).toBe(403);
+    expect(await login.json()).toMatchObject({ error: 'passkey_required' });
+  });
+
+  it('honours an acr asked for through the claims parameter', async () => {
+    const browser = new Browser(server.issuer);
+    const claims = JSON.stringify({ id_token: { acr: { essential: true, values: ['phr'] } } });
+    const { location } = await start(browser, { claims });
+    expect(location).toBeUndefined();
+    const uid = browser.cookies.get('hs_interaction')!.value;
+    const details = await (await browser.request(`/interaction/${uid}/details`)).json();
+    expect(details.passkeyOnly).toBe(true);
+  });
+
+  it('answers prompt=none with login_required when the session is below the level', async () => {
+    const browser = new Browser(server.issuer);
+    await signIn(browser, await relyingParty('rp-first', SECRETS.RP_FIRST_SECRET), {
+      redirect_uri: 'https://rp.example/cb',
+      scope: 'openid',
+      code_challenge: 'x'.repeat(43),
+      code_challenge_method: 'S256',
+    });
+    const { location } = await start(browser, { acr_values: 'phr', prompt: 'none' });
+    expect(location?.origin).toBe('https://rp.example');
+    expect(location!.searchParams.get('error')).toBe('login_required');
   });
 });
 

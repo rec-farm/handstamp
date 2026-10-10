@@ -79,19 +79,37 @@ with whatever other sign-in it has.
 
 ## What the app receives
 
-| Claim                                      | Where              | Scope     | Meaning                                                                                                  |
-| ------------------------------------------ | ------------------ | --------- | -------------------------------------------------------------------------------------------------------- |
-| `sub`                                      | ID token, userinfo | `openid`  | Stable, opaque user id. The identity, together with `iss`.                                               |
-| `amr`                                      | ID token           | `openid`  | `["pop","user","mfa"]` when the person signed in with a passkey. Absent for GitHub/Google/OIDC sign-ins. |
-| `sid`                                      | ID token           | `openid`  | The Handstamp session, to match back-channel logouts. Sent to apps with a back-channel logout URI.       |
-| `auth_time`                                | ID token           | `openid`  | When the person last authenticated. Sent when the app asks (`max_age`, or the `claims` parameter).       |
-| `groups`                                   | ID token, userinfo | `groups`  | Group slugs, e.g. `["paramtune-admins"]`. Always an array.                                               |
-| `name`, `preferred_username`, `updated_at` | userinfo           | `profile` | Display name and handle.                                                                                 |
-| `email`, `email_verified`                  | userinfo           | `email`   | See rule 5.                                                                                              |
+| Claim                                      | Where              | Scope     | Meaning                                                                                                             |
+| ------------------------------------------ | ------------------ | --------- | ------------------------------------------------------------------------------------------------------------------- |
+| `sub`                                      | ID token, userinfo | `openid`  | Stable, opaque user id. The identity, together with `iss`.                                                          |
+| `acr`                                      | ID token           | `openid`  | `phr` for a passkey sign-in (phishing-resistant), `0` otherwise. See [Asking for a passkey](#asking-for-a-passkey). |
+| `amr`                                      | ID token           | `openid`  | `["pop","user","mfa"]` when the person signed in with a passkey. Absent for GitHub/Google/OIDC sign-ins.            |
+| `sid`                                      | ID token           | `openid`  | The Handstamp session, to match back-channel logouts. Sent to apps with a back-channel logout URI.                  |
+| `auth_time`                                | ID token           | `openid`  | When the person last authenticated. Always sent.                                                                    |
+| `groups`                                   | ID token, userinfo | `groups`  | Group slugs, e.g. `["paramtune-admins"]`. Always an array.                                                          |
+| `name`, `preferred_username`, `updated_at` | userinfo           | `profile` | Display name and handle.                                                                                            |
+| `email`, `email_verified`                  | userinfo           | `email`   | See rule 5.                                                                                                         |
 
 Profile and email claims are in **userinfo**, not the ID token, as the OIDC spec intends for the
 code flow. Most libraries call userinfo after the token exchange; make sure yours does (Better
 Auth's `genericOAuth` does).
+
+### Asking for a passkey
+
+An app that needs a phishing-resistant sign-in (say, before showing billing or API keys) sends
+`acr_values=phr` with the authorization request. Discovery lists `acr_values_supported:
+["phr","0"]`.
+
+- If the person's Handstamp session came from a passkey, they go straight through, as usual.
+- If it came from GitHub, Google or another OIDC provider, Handstamp asks for their passkey and
+  offers nothing else. It refuses any other method on the server too, not only on the card.
+- With `prompt=none`, a session below the level gets `login_required` instead.
+- `acr_values=phr 0` means "a passkey if there already is one, anything otherwise". Values
+  Handstamp doesn't know are ignored.
+
+`id_token.acr` in the `claims` parameter (`value` or `values`) works the same way. Check the
+`acr` claim in the ID token either way: a request is only a request, and the token is what was
+done. Add `max_age=0` to make someone sign in again even when they already have a passkey session.
 
 Refresh tokens: an app allowed `offline_access` gets one with every sign-in. It rotates on every
 use (reusing an old one revokes the whole grant) and ends when the person signs out of Handstamp,

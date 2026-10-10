@@ -235,7 +235,7 @@ async fn login(State(app): State<App>, req: Req) -> Response {
             q.append_pair("max_age", "0");
         }
         if req.query_param("passkey").is_some_and(|v| !v.is_empty()) {
-            q.append_pair("handstamp_method", "passkey");
+            q.append_pair("acr_values", crate::oidc::acr::PHR);
         }
     }
     let cookie = app.write_sealed(STATE_COOKIE, &pending, STATE_MINUTES * 60);

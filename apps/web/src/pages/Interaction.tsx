@@ -21,7 +21,9 @@ type Details = {
   mode: 'sign-in' | 'claim' | 'invite' | 'recovery';
   setupVerified: boolean;
   enrollingAs?: string;
+  // Only a passkey will do: the app asked for acr phr, or this is the console's step-up.
   passkeyOnly: boolean;
+  stepUp: boolean;
   providers: { slug: string; kind: string; displayName: string }[];
   requiredGroup?: { slug: string; name: string };
   csrf: string;
@@ -42,6 +44,7 @@ const RETURN_ERRORS: Record<string, string> = {
   upstream_expired: 'That took too long. Try again.',
   provider_unavailable: 'That sign-in option is no longer available. Pick another one.',
   enrollment_expired: 'This link has expired or was already used. Ask your admin for a new one.',
+  passkey_required: 'This sign-in needs your passkey. Use it to continue.',
 };
 
 type Post = <T = { redirectTo: string }>(path: string, body?: unknown) => Promise<T>;
@@ -236,13 +239,13 @@ export function Interaction() {
   return (
     <CardPage footer={footer}>
       <Eyebrow name={details.instanceName} />
-      <Title>
-        {details.passkeyOnly ? "Confirm it's you" : `Sign in to ${details.client.name}`}
-      </Title>
+      <Title>{details.stepUp ? "Confirm it's you" : `Sign in to ${details.client.name}`}</Title>
       <p className="mt-3 text-body text-fg-muted">
-        {details.passkeyOnly
+        {details.stepUp
           ? 'You are about to change how you sign in, so we need your passkey once more.'
-          : 'Use the passkey on this device, or on your phone.'}
+          : details.passkeyOnly
+            ? `${details.client.name} asks for your passkey. Use the one on this device, or on your phone.`
+            : 'Use the passkey on this device, or on your phone.'}
       </p>
       <div className="mt-6 space-y-3">
         {passkeysSupported() ? (

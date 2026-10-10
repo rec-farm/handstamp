@@ -23,6 +23,7 @@ use crate::{
     enrollment::{self, Enrollment, Profile, SetupError},
     http::{ApiError, ApiResult, CSRF_HEADER, Limit, Out, Req},
     oidc::{
+        acr,
         authorize::save_grant,
         models::{ConsentResult, Grant, Interaction, InteractionResult, LoginResult},
         store::{GRANT, INTERACTION, now},
@@ -44,6 +45,14 @@ pub struct EnrollState {
 
 fn problem(status: StatusCode, code: &'static str, message: &str) -> ApiError {
     ApiError::new(status, code, message)
+}
+
+pub fn passkey_required() -> ApiError {
+    problem(
+        StatusCode::FORBIDDEN,
+        "passkey_required",
+        "This sign-in needs your passkey. Use it to continue.",
+    )
 }
 
 fn expired() -> ApiError {
@@ -122,6 +131,10 @@ pub async fn complete_sign_in(
     method: &str,
     amr: Option<&[&str]>,
 ) -> ApiResult<String> {
+    // The card only offers a passkey then; this holds even for a hand-made request (R11).
+    if amr.is_none() && acr::needs_passkey(&interaction.params) {
+        return Err(passkey_required());
+    }
     let login = LoginResult {
         account_id: account_id.to_string(),
         amr: amr.map(|a| a.iter().map(|s| s.to_string()).collect()),
@@ -275,7 +288,8 @@ async fn details(State(app): State<App>, Path(uid): Path<String>, req: Req) -> R
                 },
                 _ => None,
             };
-            let passkey_only = interaction.param("handstamp_method") == Some("passkey");
+            // The app (or the console's step-up) asked for acr phr: only a passkey will do.
+            let passkey_only = acr::needs_passkey(&interaction.params);
             let required_group = if interaction.prompt.name == "access" {
                 match interaction
                     .prompt
@@ -311,6 +325,7 @@ async fn details(State(app): State<App>, Path(uid): Path<String>, req: Req) -> R
                 "mode": mode,
                 "setupVerified": app.setup.is_verified(&interaction.uid).await?,
                 "passkeyOnly": passkey_only,
+                "stepUp": passkey_only && client_id.as_deref() == Some(CONSOLE_CLIENT_ID),
                 "providers": if passkey_only { vec![] } else { app.providers.list_enabled().await? },
                 "csrf": csrf_token(&app.csrf_key, &format!("interaction:{}", interaction.uid)),
             });
