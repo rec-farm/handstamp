@@ -1,7 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import * as oidc from 'openid-client';
 import { SoftAuthenticator } from './authenticator.ts';
-import { Browser, startTestServer } from './harness.ts';
+import { Browser, backchannelReceiver, startTestServer } from './harness.ts';
 import { decodeJwt } from './jwt.ts';
 
 // The admin API: authorization, guardrails, groups and app access, client secrets, audit (S19).
@@ -11,14 +11,19 @@ let server: Awaited<ReturnType<typeof startTestServer>>;
 type Person = Awaited<ReturnType<typeof enrolled>>;
 let admin: Person;
 let bob: Person;
+let receiver: Awaited<ReturnType<typeof backchannelReceiver>>;
 
 beforeAll(async () => {
-  server = await startTestServer('admin', { env: { HANDSTAMP_DEV_LOGIN: '0' } });
+  receiver = await backchannelReceiver();
+  server = await startTestServer('admin', {
+    env: { HANDSTAMP_DEV_LOGIN: '0', ALLOW_PRIVATE_NETWORKS: '1' },
+  });
   admin = await claimed();
   bob = await enrolled('Bob');
 });
 
 afterAll(async () => {
+  receiver?.close();
   await server?.close();
 });
 
@@ -264,6 +269,80 @@ describe('groups and app access', () => {
       const response = await admin.api(`/api/admin/clients/${id}/secret`, 'POST');
       expect((await response.json()).error).toBe('read_only');
     }
+  });
+});
+
+describe('back-channel logout', () => {
+  let secret: string;
+  let dave: Person;
+
+  // Dave signs in to the app; returns the claims of the ID token it got.
+  async function signedIn() {
+    const config = await rp('bcl-app', secret);
+    const { landed, verifier } = await authorize(dave, config, 'openid');
+    expect(landed).toBeInstanceOf(URL);
+    const tokens = await oidc.authorizationCodeGrant(config, landed as URL, {
+      pkceCodeVerifier: verifier,
+    });
+    return tokens.claims()!;
+  }
+
+  // The app was told that this session ended.
+  async function told(claims: { sub: string; sid?: unknown }) {
+    await vi.waitFor(
+      () =>
+        expect(receiver.tokens('/bcl-app').map((t) => decodeJwt(t))).toContainEqual(
+          expect.objectContaining({ aud: 'bcl-app', sub: claims.sub, sid: claims.sid }),
+        ),
+      { timeout: 3000 },
+    );
+  }
+
+  it('registers a back-channel URI from the admin API, https:// unless it is localhost', async () => {
+    const app = {
+      clientId: 'bcl-app',
+      name: 'Back-channel App',
+      redirectUris: ['https://app.example/cb'],
+      scopes: ['openid'],
+      firstParty: true,
+    };
+    const refused = await admin.api('/api/admin/clients', 'POST', {
+      ...app,
+      backchannelLogoutUri: 'http://bcl-app.internal/logout',
+    });
+    expect(refused.status).toBe(400);
+    expect((await refused.json()).field).toBe('backchannelLogoutUri');
+    const created = await admin.api('/api/admin/clients', 'POST', {
+      ...app,
+      backchannelLogoutUri: receiver.uri('/bcl-app'),
+    });
+    expect(created.status).toBe(201);
+    secret = (await created.json()).secret;
+    dave = await enrolled('Dave');
+  });
+
+  it('tells the app when the person signs out one device on the account page', async () => {
+    const claims = await signedIn();
+    const sessions = await (await dave.api('/api/me/sessions')).json();
+    const session = sessions.find((s: { apps: { clientId: string }[] }) =>
+      s.apps.some((a) => a.clientId === 'bcl-app'),
+    );
+    expect((await dave.api(`/api/me/sessions/${session.uid}`, 'DELETE')).status).toBe(204);
+    await told(claims);
+  });
+
+  it('tells the app when an admin signs the person out everywhere', async () => {
+    const claims = await signedIn();
+    expect((await admin.api(`/api/admin/users/${dave.id}/sessions`, 'DELETE')).status).toBe(200);
+    await told(claims);
+  });
+
+  it('tells the app when an admin turns the account off', async () => {
+    const claims = await signedIn();
+    expect(
+      (await admin.api(`/api/admin/users/${dave.id}`, 'PATCH', { status: 'disabled' })).status,
+    ).toBe(200);
+    await told(claims);
   });
 });
 

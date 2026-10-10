@@ -1,14 +1,31 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import * as oidc from 'openid-client';
-import { decodeJwt, decodeProtectedHeader } from './jwt.ts';
-import { Browser, SECRETS, startTestServer } from './harness.ts';
+import { decodeJwt, decodeProtectedHeader, verifyJws } from './jwt.ts';
+import { Browser, SECRETS, backchannelReceiver, startTestServer } from './harness.ts';
 
 let server: Awaited<ReturnType<typeof startTestServer>>;
+let receiver: Awaited<ReturnType<typeof backchannelReceiver>>;
 
 beforeAll(async () => {
-  server = await startTestServer('oidc');
+  receiver = await backchannelReceiver();
+  // Two apps with back-channel logout URIs, to see who is told about which sign-out.
+  const bcl = (name: string) => ({
+    clientId: `rp-bcl-${name}`,
+    name: `Back-channel ${name.toUpperCase()}`,
+    redirectUris: [`https://bcl-${name}.example/cb`],
+    postLogoutRedirectUris: [`https://bcl-${name}.example/bye`],
+    scopes: ['openid'],
+    firstParty: true,
+    backchannelLogoutUri: receiver.uri(`/${name}`),
+    secretEnv: 'RP_FIRST_SECRET',
+  });
+  server = await startTestServer('oidc', {
+    env: { ALLOW_PRIVATE_NETWORKS: '1' },
+    clients: [bcl('a'), bcl('b')],
+  });
 });
 afterAll(async () => {
+  receiver?.close();
   await server?.close();
 });
 
@@ -65,6 +82,8 @@ const REDIRECTS: Record<string, string> = {
   'rp-first': 'https://rp.example/cb',
   'rp-third': 'https://third.example/cb',
   'rp-public': 'http://localhost:9999/cb',
+  'rp-bcl-a': 'https://bcl-a.example/cb',
+  'rp-bcl-b': 'https://bcl-b.example/cb',
 };
 
 async function codeFlow(clientId: string, secret: string | undefined, scope: string, options = {}) {
@@ -299,6 +318,109 @@ describe('logout', () => {
     );
     expect(response.status).toBe(400);
     expect(await response.text()).toContain('data-hs-view="error"');
+  });
+});
+
+describe('back-channel logout', () => {
+  // Signs one browser in to both back-channel apps: the second sign-in rides the SSO session.
+  async function signedInToBoth() {
+    const a = await codeFlow('rp-bcl-a', SECRETS.RP_FIRST_SECRET, 'openid');
+    const config = await relyingParty('rp-bcl-b', SECRETS.RP_FIRST_SECRET);
+    const verifier = oidc.randomPKCECodeVerifier();
+    const nonce = oidc.randomNonce();
+    const { location } = await a.browser.follow(
+      oidc.buildAuthorizationUrl(config, {
+        redirect_uri: REDIRECTS['rp-bcl-b'],
+        scope: 'openid',
+        nonce,
+        code_challenge: await oidc.calculatePKCECodeChallenge(verifier),
+        code_challenge_method: 'S256',
+      }).href,
+    );
+    expect(location, 'SSO should go straight back to the second app').toBeDefined();
+    const b = await oidc.authorizationCodeGrant(config, location!, {
+      pkceCodeVerifier: verifier,
+      expectedNonce: nonce,
+    });
+    return {
+      browser: a.browser,
+      idToken: a.tokens.id_token!,
+      a: a.tokens.claims()!,
+      b: b.claims()!,
+    };
+  }
+
+  async function signOut(browser: Browser, idToken: string, everywhere: boolean) {
+    const config = await relyingParty('rp-bcl-a', SECRETS.RP_FIRST_SECRET);
+    const html = await (
+      await browser.request(
+        oidc.buildEndSessionUrl(config, {
+          id_token_hint: idToken,
+          post_logout_redirect_uri: 'https://bcl-a.example/bye',
+        }).href,
+      )
+    ).text();
+    const xsrf = /data-hs-xsrf="([^"]+)"/.exec(html)![1];
+    const form = new URLSearchParams({ xsrf, ...(everywhere ? { logout: 'yes' } : {}) });
+    const done = await browser.request('/session/end/confirm', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+    });
+    expect(done.status).toBe(303);
+  }
+
+  it('puts a per-app sid in the ID token only for apps with a back-channel URI', async () => {
+    const { a, b } = await signedInToBoth();
+    expect(a.sid).toBeTruthy();
+    expect(b.sid).toBeTruthy();
+    expect(a.sid).not.toBe(b.sid);
+    const plain = await codeFlow('rp-first', SECRETS.RP_FIRST_SECRET, 'openid');
+    expect(plain.tokens.claims()!.sid).toBeUndefined();
+  });
+
+  it('tells every app in the session when someone also signs out of Handstamp', async () => {
+    const { browser, idToken, a, b } = await signedInToBoth();
+    const [beforeA, beforeB] = [receiver.tokens('/a').length, receiver.tokens('/b').length];
+    await signOut(browser, idToken, true);
+    await vi.waitFor(
+      () => {
+        expect(receiver.tokens('/a').length).toBeGreaterThan(beforeA);
+        expect(receiver.tokens('/b').length).toBeGreaterThan(beforeB);
+      },
+      { timeout: 3000 },
+    );
+    for (const [path, clientId, claims] of [
+      ['/a', 'rp-bcl-a', a],
+      ['/b', 'rp-bcl-b', b],
+    ] as const) {
+      const token = receiver.tokens(path).at(-1)!;
+      expect(await verifyJws(token, server.issuer)).toBe(true);
+      expect(decodeProtectedHeader(token)).toMatchObject({ alg: 'RS256', typ: 'logout+jwt' });
+      const logout = decodeJwt(token);
+      expect(logout).toMatchObject({
+        iss: server.issuer,
+        aud: clientId,
+        sub: claims.sub,
+        sid: claims.sid,
+        events: { 'http://schemas.openid.net/event/backchannel-logout': {} },
+      });
+      expect(logout).not.toHaveProperty('nonce');
+      expect(logout.jti).toBeTruthy();
+      expect((logout.exp as number) - (logout.iat as number)).toBe(120);
+    }
+  });
+
+  it('tells only the app being left when Handstamp stays signed in', async () => {
+    const { browser, idToken, a } = await signedInToBoth();
+    const beforeB = receiver.tokens('/b').length;
+    await signOut(browser, idToken, false);
+    await vi.waitFor(() => expect(decodeJwt(receiver.tokens('/a').at(-1)!).sid).toBe(a.sid), {
+      timeout: 3000,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(receiver.tokens('/b').length).toBe(beforeB);
+    expect(browser.cookies.has('hs_session')).toBe(true);
   });
 });
 

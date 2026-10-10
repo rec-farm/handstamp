@@ -1,5 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createServer as createHttpServer } from 'node:http';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -196,6 +197,29 @@ export async function startTestServer(
 type Cookie = { value: string; path: string };
 
 // Just enough browser: path-scoped cookies, manual redirects, Origin on POSTs.
+// A relying party's back-channel logout endpoint: records every logout_token POSTed to it, by path.
+export async function backchannelReceiver() {
+  const port = await freePort();
+  const received: { path: string; token: string }[] = [];
+  const server = createHttpServer((req, res) => {
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', () => {
+      received.push({
+        path: req.url ?? '',
+        token: new URLSearchParams(body).get('logout_token') ?? '',
+      });
+      res.writeHead(200, { 'cache-control': 'no-store' }).end();
+    });
+  }).listen(port, '127.0.0.1');
+  return {
+    received,
+    uri: (path: string) => `http://127.0.0.1:${port}${path}`,
+    tokens: (path: string) => received.filter((r) => r.path === path).map((r) => r.token),
+    close: () => server.close(),
+  };
+}
+
 export class Browser {
   readonly cookies = new Map<string, Cookie>();
 
