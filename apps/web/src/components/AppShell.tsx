@@ -12,6 +12,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { RecChain } from './rec-chain.tsx';
+import { Lockup } from './ui.tsx';
 
 type Nav = { href: string; label: string; icon: ReactNode; exact?: boolean };
 
@@ -67,13 +68,8 @@ export function AppShell({
   return (
     <div className="min-h-dvh md:flex">
       <aside className="sticky top-0 hidden h-dvh w-sidebar shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-fg md:flex light:border-r-0">
-        <div className="flex h-16 items-center gap-3 px-5">
-          {/* TODO(brand): the Handstamp mark comes from rec-brand/build.py (§2.10). */}
-          <span
-            aria-hidden
-            className="size-6 rounded-xs border border-dashed border-sidebar-fg-muted"
-          />
-          <span className="wordmark">Handstamp</span>
+        <div className="flex h-16 items-center px-5">
+          <Lockup className="h-7" onDark />
         </div>
         {/* Which installation this is (§10.3 workspace card). There's only one, so no switcher. */}
         <div className="mx-3 flex items-center gap-3 rounded-sm border border-border p-2.5 light:border-deep-700">
@@ -142,7 +138,9 @@ export function AppShell({
 
       <div className="min-w-0 flex-1">
         <header className="flex h-topbar items-center justify-between border-b border-border px-4 md:px-8">
-          <span className="wordmark text-fg md:hidden">Handstamp</span>
+          <span className="md:hidden">
+            <Lockup className="h-6" />
+          </span>
           <p className="hidden text-body-sm text-fg-muted md:block">{crumb}</p>
           <div className="flex items-center gap-3">
             <span

@@ -1,6 +1,6 @@
 # Handstamp v1 plan
 
-> Status: **M5 done (2026-10-03); Rust server (2026-10-08).** The provider, APIs and CLI are one Rust binary now (R20, [RUST-PORT.md](RUST-PORT.md)), with the same conformance results. v1 scope complete: passkeys, upstream sign-in, recovery, the account page and admin console, a production image and compose file, deploy/integration/security docs, and full Basic OP + Config OP conformance. Remaining: Paramtune's side of the §6 example (Paramtune work) and running the CI workflows once the repo is on GitHub.
+> Status: **M5 done (2026-10-03); Rust server (2026-10-08).** The provider, APIs and CLI are one Rust binary now (R20, [RUST-PORT.md](RUST-PORT.md)), with the same conformance results. v1 scope complete: passkeys, upstream sign-in, recovery, the account page and admin console, a production image and compose file, deploy/integration/security docs, and full Basic OP + Config OP conformance. CI and the nightly conformance run are green on GitHub, and Paramtune signs in with Handstamp (§6.2). Post-v1 work is in §8.2.
 > Handstamp is the passwordless OpenID Connect provider for the R.E.C. product family (RECIAM SAS).
 > Siblings: Paramtune (config and schema management), StillUp (API uptime monitoring).
 
@@ -18,7 +18,7 @@ These are the decisions most worth reviewing. Each is explained in the section i
 | D6  | **`groups` goes in the ID token (and userinfo) when the `groups` scope is granted. `profile` and `email` claims stay in userinfo only**, the spec default. _(Revised in M1: the first draft put every scope claim in the ID token, which the conformance suite flags under OIDC Core 5.4 because it exposes the email to anyone the ID token is shown to.)_ | The brief asks for `groups` in the ID token. Everything else follows the spec and shares less.                                                                                                                            |
 | D7  | **Instance settings come from environment variables. Clients, groups and upstream providers live in the database** and are managed in the admin UI. Env vars can seed upstream providers, and `HANDSTAMP_CLIENTS_FILE` can declare clients. Seeded providers and declared clients are read-only in the UI.                                                  | "Everything through env" doesn't scale to clients created at runtime, but deploys should still be reproducible. See [§8](#8-resolved-decisions) R6.                                                                       |
 | D8  | **Invite-only by default.** Self sign-up is opt-in per upstream provider, with an email-domain or GitHub-org allowlist.                                                                                                                                                                                                                                     | An open IdP lets anyone create an account in every app that trusts it. See R2.                                                                                                                                            |
-| D9  | **The wordmark is live text in Archivo for now, with a TODO.**                                                                                                                                                                                                                                                                                              | DESIGN §2.9 forbids live-text wordmarks, but the outlined asset has to come from `rec-brand/build.py`, which is out of scope here.                                                                                        |
+| D9  | **The wordmark and mark are the outlined assets from `rec-brand` (brand v1.7.0, 2026-10-10).** _(Was live text in Archivo with a TODO until the mark existed.)_                                                                                                                                                                                             | DESIGN §2.9 forbids live-text wordmarks; `rec-brand/build.py` now generates the Handstamp mark, lockups and favicon.                                                                                                      |
 | D10 | **v1 shipped as a single replica; more work since 2026-10-10.** Rate limits moved from memory to an unlogged Postgres table, and a booting replica keeps a setup code another printed in the last 30 seconds. Keys were already picked up by polling and maintenance already ran under an advisory lock.                                                    | Scaling out needed no redesign, as planned. See R5.                                                                                                                                                                       |
 
 ---
@@ -410,7 +410,7 @@ Each milestone ends with `pnpm check` green, a short demo script in `docs/`, and
 - Account page v1: profile, passkeys (add, rename, remove; never the last one), sessions, sign out everywhere.
 - `/` becomes a redirect (R17): unclaimed instance → `/setup`; signed out → console sign-in; signed in → `/account` (admins also see an **Admin** link).
 - Step-up (S14). The sign-in, claim and consent cards fully designed per DESIGN (both themes, 375px to 1536px, §16 checklist).
-- Tests: a software authenticator (`apps/server/test/authenticator.ts`: real P-256 keys, CBOR attestation) drives the integration tests, and `pnpm e2e` runs the real UI in Chromium with its virtual WebAuthn authenticator.
+- Tests: a software authenticator (`tests/authenticator.ts`: real P-256 keys, CBOR attestation) drives the integration tests, and `pnpm e2e` runs the real UI in Chromium with its virtual WebAuthn authenticator.
 - **Exit:** a fresh database plus the setup code gives an admin with a passkey, and the example app (`examples/test-app`) signs in with that passkey. ✅
 - **Deviations:** passkey autofill (conditional UI) is not used: sign-in has no username field, so the passkey button does the same job. The session list shows when, how and which apps; device names (user agent) are not recorded yet.
 
@@ -420,7 +420,7 @@ Each milestone ends with `pnpm check` green, a short demo script in `docs/`, and
 - Sign-up policy (closed, invite, domain or org allowlist), invites, linking from the account page, verified-email uniqueness, conflict handling.
 - Recovery layers 1 to 3 (§3.2).
 - Tests: a mock upstream OIDC issuer (an `oidc-provider` instance in tests) for login, sign-up, link, conflict and refusal. GitHub is mocked at the HTTP level.
-- **Exit:** every threat row in §3.3 has at least one automated test named after it. ✅ Account takeover via email, compromised upstream account and lost passkey are `describe('threat: …')` blocks in `apps/server/test/upstream.flow.test.ts`; stolen session and refresh token live in `passkeys.flow.test.ts` and `oidc.flow.test.ts`; the setup token race is the "cannot be claimed twice" test. The malicious-admin row lands with the admin UI in M4.
+- **Exit:** every threat row in §3.3 has at least one automated test named after it. ✅ Account takeover via email, compromised upstream account and lost passkey are `describe('threat: …')` blocks in `tests/upstream.flow.test.ts`; stolen session and refresh token live in `passkeys.flow.test.ts` and `oidc.flow.test.ts`; the setup token race is the "cannot be claimed twice" test. The malicious-admin row lands with the admin UI in M4.
 - **Built beyond the list:** step-up requires a passkey when the user has one (a fresh upstream sign-in doesn't count), the account page's "Recent security activity", GitHub Enterprise support, `pnpm example:idp` (a demo upstream issuer for local testing), and userinfo fallback for issuers that keep email out of the ID token.
 - **Moved:** groups and their claim move to M4, with the admin UI that manages them.
 
@@ -428,7 +428,7 @@ Each milestone ends with `pnpm check` green, a short demo script in `docs/`, and
 
 - Admin pages: overview (stat tiles: users, active sessions, clients, providers), users (detail, groups, sessions, identities, disable, recovery link), groups, clients (create, rotate secret, show once, redirect URI editor, first-party flag, required group), upstream providers, signing keys (rotate, state timeline), audit log (filter by actor, action, target and time; CSV export).
 - Every admin mutation is audited and needs step-up.
-- **Exit:** the §16 checklist passes on every screen in both themes, with screenshots in the PR, and the audit log covers every row of S19. ✅ Screenshots of every admin screen in Dark and Paper (and 375px) come from `SCREENSHOT_DIR=… pnpm e2e`; S19 is the "records every admin change" test in `apps/server/test/admin.flow.test.ts`.
+- **Exit:** the §16 checklist passes on every screen in both themes, with screenshots in the PR, and the audit log covers every row of S19. ✅ Screenshots of every admin screen in Dark and Paper (and 375px) come from `SCREENSHOT_DIR=… pnpm e2e`; S19 is the "records every admin change" test in `tests/admin.flow.test.ts`.
 - **Also in M4:** groups and the `groups` claim (from M3); per-app required group (R7) enforced by an extra `access` prompt that runs on every authorization, SSO included, with a "No access to …" card; guardrails (no self-demotion, never zero admins); app secrets generated and shown once (and cleared from browser history); env/file/built-in entries read-only; CSV export neutralises spreadsheet formulas.
 
 **M5: Docker, compose, Dokploy, full conformance and docs** · ✅ done
@@ -465,86 +465,39 @@ Rules for app authors:
 - Use PKCE (S256), and verify `iss` and `nonce`.
 - Read roles from `OIDC_ROLES_CLAIM` at every sign-in, so group changes take effect on the next sign-in.
 
-### 6.2 Worked example: Paramtune (Better Auth `genericOAuth`)
+### 6.2 Worked example: Paramtune
 
-**In Handstamp** (Admin → Clients → Create client):
+Paramtune signs in with Handstamp since its Rust backend (Paramtune #267, roles from groups in #279, per-platform editors in #281). It uses the `openidconnect` crate with PKCE, keys users on `(iss, sub)`, and reads roles from the groups claim at every sign-in. Its own [DEPLOYMENT.md](https://github.com/RodrigoEspinosa/paramtune/blob/master/docs/DEPLOYMENT.md) is the reference; this is the Handstamp side.
+
+**In Handstamp** (Admin → Apps → Add app):
 
 | Field                      | Value                                                         |
 | -------------------------- | ------------------------------------------------------------- |
 | Client ID                  | `paramtune`                                                   |
 | Redirect URI               | `https://paramtune.example.com/api/auth/oauth2/callback/oidc` |
 | Post-logout redirect URI   | `https://paramtune.example.com/`                              |
+| Back-channel logout URI    | `https://paramtune.example.com/api/auth/backchannel-logout`   |
 | Allowed scopes             | `openid profile email groups`                                 |
 | First-party (skip consent) | on                                                            |
 | Required group (optional)  | `paramtune-users`                                             |
 
-Then create the group `paramtune-admins` and add the admins to it.
+Then create the groups Paramtune maps to roles (`paramtune-admins`, and optionally an editor group) and add people to them.
 
-**In Paramtune** (`src/lib/auth.ts`, sketch). The provider ID is the generic `oidc`, not `handstamp`, so switching IdPs only means changing env vars:
-
-```ts
-import { betterAuth } from 'better-auth';
-import { genericOAuth } from 'better-auth/plugins';
-
-const oidcEnabled = Boolean(process.env.OIDC_ISSUER && process.env.OIDC_CLIENT_ID);
-const rolesClaim = process.env.OIDC_ROLES_CLAIM ?? 'groups';
-const adminGroup = process.env.OIDC_ADMIN_GROUP;
-
-export const auth = betterAuth({
-  // …existing database, baseURL, secret…
-  user: { additionalFields: { role: { type: 'string', defaultValue: 'member', input: false } } },
-  account: { accountLinking: { enabled: false } }, // key on (iss, sub); never link by email
-  plugins: [
-    nextCookies(),
-    ...(oidcEnabled
-      ? [
-          genericOAuth({
-            config: [
-              {
-                providerId: 'oidc',
-                discoveryUrl: `${process.env.OIDC_ISSUER}/.well-known/openid-configuration`,
-                clientId: process.env.OIDC_CLIENT_ID!,
-                clientSecret: process.env.OIDC_CLIENT_SECRET,
-                scopes: (process.env.OIDC_SCOPES ?? 'openid profile email').split(/\s+/),
-                pkce: true,
-                overrideUserInfo: true, // refresh name/email/role on every sign-in
-                mapProfileToUser: (profile) => {
-                  const groups = Array.isArray(profile[rolesClaim]) ? profile[rolesClaim] : [];
-                  return {
-                    name: profile.name ?? profile.preferred_username,
-                    email: profile.email,
-                    image: profile.picture,
-                    role: adminGroup && groups.includes(adminGroup) ? 'admin' : 'member',
-                  };
-                },
-              },
-            ],
-          }),
-        ]
-      : []),
-  ],
-});
-```
-
-Client side: `authClient.signIn.oauth2({ providerId: 'oidc', callbackURL: '/' })`, with the button labelled `Sign in with ${OIDC_DISPLAY_NAME}`.
-
-`.env` for Paramtune:
+**In Paramtune** (`.env`):
 
 ```
 OIDC_ISSUER=https://id.example.com
 OIDC_CLIENT_ID=paramtune
 OIDC_CLIENT_SECRET=hs_sec_…
-OIDC_SCOPES=openid profile email groups
+OIDC_SCOPES="openid profile email groups"
 OIDC_ROLES_CLAIM=groups
 OIDC_ADMIN_GROUP=paramtune-admins
+OIDC_EDITOR_GROUP=paramtune-editors      # optional: everyone else is view-only
+OIDC_PLATFORM_EDITORS=ios:team-ios;web:team-web   # optional
 OIDC_DISPLAY_NAME=Handstamp
 ```
 
-Caveats to verify in Paramtune when it's implemented (this is Paramtune work, not Handstamp work):
-
-- Paramtune today uses `better-sqlite3`, Google social sign-in and dev-only email/password. Its config has no OIDC yet.
-- Check that `overrideUserInfo` and `additionalFields` in `mapProfileToUser` behave as described in Better Auth 1.7, and whether `genericOAuth` reads claims from the ID token or from userinfo. Handstamp puts them in both (D6), so either works.
-- Better Auth's `email_verified` handling: Handstamp only sends `true` for emails verified upstream.
+Handstamp must be able to reach the back-channel URI from the server. Group changes take effect at the next sign-in, and signing out in either app signs out of the other.
 
 ### 6.3 Handstamp instance env vars (preview of `.env.example`)
 
@@ -615,12 +568,21 @@ These answer the open questions from the first draft (rev 1).
 | M1-1  | D4: `__Host-` cookies            | `oidc-provider` always scopes the resume cookie to `/auth/:uid` and the interaction cookie to `/interaction/:uid`. Over plain http, browsers reject both prefixes. | Session cookie `__Host-hs_session`. Interaction and resume cookies `__Secure-hs_interaction` and `__Secure-hs_resume`. Unprefixed names only when the issuer is `http://localhost` (dev).                              |
 | M1-2  | Where the interaction API lives  | The interaction cookie is only sent under `/interaction/:uid`.                                                                                                     | The interaction API is `/interaction/:uid/*`, not `/api/interaction/*`. The upstream callback (fixed URL at GitHub) will hand back to `/interaction/:uid/upstream/complete` in M3.                                     |
 | M1-3  | Client cache                     | Clients loaded through the adapter are cached by a hash of their metadata.                                                                                         | Admin edits take effect on the next request. No invalidation code needed.                                                                                                                                              |
-| M1-4  | Refresh-token reuse              | Reusing a consumed refresh token destroys it and revokes the grant.                                                                                                | Covered by `apps/server/test/oidc.flow.test.ts`.                                                                                                                                                                       |
+| M1-4  | Refresh-token reuse              | Reusing a consumed refresh token destroys it and revokes the grant.                                                                                                | Covered by `tests/oidc.flow.test.ts`.                                                                                                                                                                                  |
 | M1-5  | `offline_access`                 | Per OIDC Core §11, `oidc-provider` drops `offline_access` unless the request also has `prompt=consent`.                                                            | **R15** below.                                                                                                                                                                                                         |
 | M1-6  | Logout and error pages           | `logoutSource`, `postLogoutSuccessSource` and `renderError` must write the response themselves.                                                                    | They return the SPA's `index.html` with escaped `data-hs-*` attributes (view, xsrf, client, error code). No inline script, no extra cookie, and the real status code is kept.                                          |
 | M1-7  | Conformance browser automation   | The suite clicks through pages with its own in-container browser, which may not run the React bundle.                                                              | In `HANDSTAMP_CONFORMANCE_MODE` only, sign-in, consent, logout and error are plain no-JS HTML forms. The CSRF token is still required; only the `Origin` requirement is relaxed. The protocol under test is unchanged. |
 | M1-8  | D3: does the suite send PKCE?    | **No.** The Basic OP plan sends plain code requests without `code_challenge`, and Handstamp correctly refuses them.                                                | The two conformance clients set `requirePkce: false` (`conformance/clients.json`). Every other client still requires PKCE by default.                                                                                  |
 | M1-9  | D6: scope claims in the ID token | With every scope claim in the ID token, the suite warns (`EnsureIdTokenDoesNotContainEmailForScopeEmail`, OIDC Core 5.4).                                          | D6 revised: only `groups` rides in the ID token.                                                                                                                                                                       |
-| M1-10 | What browser the suite drives    | Real Chrome (the suite's Playwright image), not a JavaScript-less browser.                                                                                         | The plain conformance-mode forms (M1-7) aren't strictly needed. Follow-up: point the suite at the real SPA and drop conformance-mode HTML, so the run covers the real UI.                                              |
+| M1-10 | What browser the suite drives    | HtmlUnit, not real Chrome as first noted: it doesn't run JavaScript modules.                                                                                       | _Corrected 2026-10-10:_ the WebRunner is HtmlUnit, which doesn't run the SPA, so the conformance-mode forms (M1-7) are needed (§8.2 P1).                                                                               |
 
-Still open: back-channel logout triggered outside a request (needed for sign out everywhere in M2).
+Back-channel logout outside a request, the last open M1 item, shipped with sign out everywhere in M2 (`sessions.rs`, `passkeys.flow.test.ts`).
+
+### 8.2 After v1
+
+| #   | Item                                    | Outcome                                                                                                                                                                                                                                                                                                          |
+| --- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1  | M1-10: drive the real UI in conformance | **Not possible with the pinned suite (checked 2026-10-10).** Its WebRunner is HtmlUnit, not Chrome: the page source it captures is XHTML-serialised and `#root` stays empty, because it doesn't run the SPA's module bundle. The conformance-mode HTML forms stay. Revisit if the suite moves to a real browser. |
+| P2  | `acr` / `acr_values` (R11)              | Shipped 2026-10-10.                                                                                                                                                                                                                                                                                              |
+| P3  | The outlined mark and wordmark (D9)     | Shipped 2026-10-10, from rec-brand v1.7.0.                                                                                                                                                                                                                                                                       |
+| P4  | More than one replica (D10, R5)         | Shipped 2026-10-10: rate limits in Postgres, setup code kept across replicas booting together.                                                                                                                                                                                                                   |
