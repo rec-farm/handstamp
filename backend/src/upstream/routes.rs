@@ -114,7 +114,7 @@ async fn interaction_of(app: &App, req: &Req) -> anyhow::Result<Option<Interacti
 
 /// GET /interaction/:uid/upstream/:slug
 async fn start(State(app): State<App>, Path((uid, slug)): Path<(String, String)>, req: Req) -> Response {
-    if !app.limits.check(Limit::Authorization, &req.path, req.ip) {
+    if !app.limits.check(Limit::Authorization, &req.path, req.ip).await {
         return ApiError::rate_limited().into_response();
     }
     let interaction = match interaction_of(&app, &req).await {
@@ -140,7 +140,7 @@ async fn start(State(app): State<App>, Path((uid, slug)): Path<(String, String)>
 
 /// GET /upstream/:slug/callback
 async fn callback(State(app): State<App>, Path(slug): Path<String>, req: Req) -> Response {
-    if !app.limits.check(Limit::Authorization, &req.path, req.ip) {
+    if !app.limits.check(Limit::Authorization, &req.path, req.ip).await {
         return ApiError::rate_limited().into_response();
     }
     match callback_inner(&app, &slug, &req).await {

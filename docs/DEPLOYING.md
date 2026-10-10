@@ -72,8 +72,8 @@ real addresses.
    `compose.yaml` doesn't matter here.
 4. **Deploy**, then open the logs of the `handstamp` service and [claim the instance](#claim-the-instance).
 
-Dokploy's own health view uses the image's `HEALTHCHECK` (`/readyz`). Keep **one replica**
-([why](#operations-notes)).
+Dokploy's own health view uses the image's `HEALTHCHECK` (`/readyz`). One replica is plenty;
+more work too ([replicas](#operations-notes)).
 
 If you'd rather use a Dokploy-managed Postgres, deploy the `Dockerfile` as an Application
 instead and set `DATABASE_URL` to the managed database's internal URL. The image already runs in
@@ -198,9 +198,13 @@ docker compose exec handstamp handstamp keys promote   # start signing with it i
 
 ## Operations notes
 
-**One replica.** Run a single `handstamp` container. Rate limits are kept in memory per process,
-so several replicas would multiply them. Restarts take a few seconds, and sessions live in
-Postgres, so nothing is lost.
+**Replicas.** One `handstamp` container is enough for the traffic an identity provider gets, and
+restarts take a few seconds without losing anything: sessions live in Postgres. You can run more
+behind the same proxy. Every replica keeps its state in Postgres: sessions, codes, tokens,
+signing keys (picked up within a minute), rate-limit counts and the setup code. Maintenance runs on one
+replica at a time. All replicas need the same `HANDSTAMP_SECRET_KEY`, `HANDSTAMP_ISSUER` and
+database. Before the instance is claimed, a replica that starts within 30 seconds of another
+keeps the setup code the first one printed, so look for the code in the first replica's logs.
 
 **Health checks.** `GET /healthz` says the process is up. `GET /readyz` also checks the database
 and returns 503 when it can't reach it. The image's `HEALTHCHECK` uses `/readyz`.

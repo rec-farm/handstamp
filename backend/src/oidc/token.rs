@@ -170,7 +170,7 @@ const TOKEN_PARAMS: [&str; 9] = [
 
 /// POST /token.
 pub async fn token(State(app): State<App>, req: Req) -> Response {
-    if !app.limits.check(Limit::Token, &req.path, req.ip) {
+    if !app.limits.check(Limit::Token, &req.path, req.ip).await {
         return crate::http::ApiError::rate_limited().into_response();
     }
     let result = async {

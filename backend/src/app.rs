@@ -81,7 +81,7 @@ impl App {
             enrollments: Enrollments::new(pool.clone(), issuer.clone()),
             identities: Identities::new(pool.clone()),
             providers: Providers::new(pool.clone(), &root),
-            limits: RateLimiter::new(config.rate_limit_scale),
+            limits: RateLimiter::new(config.rate_limit_scale, pool.clone()),
             csrf_key: crypto::derive_key(&root, Purpose::Csrf),
             state_key: crypto::derive_key(&root, Purpose::StateCookies),
             rp,

@@ -389,7 +389,7 @@ async fn list_passkeys(State(app): State<App>, req: Req) -> Response {
 async fn passkey_options(State(app): State<App>, req: Req) -> Response {
     reply(
         async {
-            app.limits.guard(Limit::Interaction, &req.path, req.ip)?;
+            app.limits.guard(Limit::Interaction, &req.path, req.ip).await?;
             let Signed { user, session } = app
                 .signed_in(
                     &req,
@@ -445,7 +445,7 @@ async fn passkey_options(State(app): State<App>, req: Req) -> Response {
 async fn add_passkey(State(app): State<App>, req: Req) -> Response {
     reply(
         async {
-            app.limits.guard(Limit::Interaction, &req.path, req.ip)?;
+            app.limits.guard(Limit::Interaction, &req.path, req.ip).await?;
             let Signed { user, session } = app
                 .signed_in(
                     &req,
@@ -691,7 +691,7 @@ async fn identities(State(app): State<App>, req: Req) -> Response {
 async fn link_identity(State(app): State<App>, Path(slug): Path<String>, req: Req) -> Response {
     reply(
         async {
-            app.limits.guard(Limit::Interaction, &req.path, req.ip)?;
+            app.limits.guard(Limit::Interaction, &req.path, req.ip).await?;
             let Signed { session, .. } = app
                 .signed_in(
                     &req,

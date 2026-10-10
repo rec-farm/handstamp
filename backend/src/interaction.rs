@@ -235,8 +235,8 @@ pub async fn pending_enrollment(app: &App, req: &Req, client_id: &str) -> ApiRes
     Ok(app.enrollments.by_id(state.enrollment_id).await?)
 }
 
-fn limited(app: &App, req: &Req, limit: Limit) -> ApiResult<()> {
-    app.limits.guard(limit, &req.path, req.ip)
+async fn limited(app: &App, req: &Req, limit: Limit) -> ApiResult<()> {
+    app.limits.guard(limit, &req.path, req.ip).await
 }
 
 fn reply(result: ApiResult<Out>) -> Response {
@@ -249,7 +249,7 @@ fn reply(result: ApiResult<Out>) -> Response {
 /// Plain no-JS forms the conformance suite's browser automation can click (S17).
 async fn conformance_page(State(app): State<App>, Path(uid): Path<String>, req: Req) -> Response {
     reply(async {
-        limited(&app, &req, Limit::Interaction)?;
+        limited(&app, &req, Limit::Interaction).await?;
         let interaction = load(&app, &req, &uid).await?;
         let csrf = csrf_token(&app.csrf_key, &format!("interaction:{}", interaction.uid));
         let action = if interaction.prompt.name == "login" { "dev-login" } else { "consent" };
@@ -266,7 +266,7 @@ async fn conformance_page(State(app): State<App>, Path(uid): Path<String>, req: 
 async fn details(State(app): State<App>, Path(uid): Path<String>, req: Req) -> Response {
     reply(
         async {
-            limited(&app, &req, Limit::Interaction)?;
+            limited(&app, &req, Limit::Interaction).await?;
             let interaction = load(&app, &req, &uid).await?;
             let client = app.clients.load(interaction.client_id()).await?;
             let client_id = client.as_ref().map(|c| c.client_id.clone());
@@ -344,7 +344,7 @@ async fn details(State(app): State<App>, Path(uid): Path<String>, req: Req) -> R
 async fn dev_login(State(app): State<App>, Path(uid): Path<String>, req: Req) -> Response {
     reply(
         async {
-            limited(&app, &req, Limit::Interaction)?;
+            limited(&app, &req, Limit::Interaction).await?;
             guard(&app, &req, &uid)?;
             let Some(test_user) = app.test_user else {
                 return Err(problem(StatusCode::NOT_FOUND, "not_found", "Not found."));
@@ -361,7 +361,7 @@ async fn dev_login(State(app): State<App>, Path(uid): Path<String>, req: Req) ->
 async fn consent(State(app): State<App>, Path(uid): Path<String>, req: Req) -> Response {
     reply(
         async {
-            limited(&app, &req, Limit::Interaction)?;
+            limited(&app, &req, Limit::Interaction).await?;
             guard(&app, &req, &uid)?;
             let interaction = load(&app, &req, &uid).await?;
             let (Some(account), true) = (interaction.account_id.clone(), interaction.prompt.name == "consent") else {
@@ -429,7 +429,7 @@ async fn consent(State(app): State<App>, Path(uid): Path<String>, req: Req) -> R
 async fn abort(State(app): State<App>, Path(uid): Path<String>, req: Req) -> Response {
     reply(
         async {
-            limited(&app, &req, Limit::Interaction)?;
+            limited(&app, &req, Limit::Interaction).await?;
             guard(&app, &req, &uid)?;
             let interaction = load(&app, &req, &uid).await?;
             let result = InteractionResult {
@@ -453,7 +453,7 @@ fn challenge_expired(message: &str) -> ApiError {
 async fn passkey_options(State(app): State<App>, Path(uid): Path<String>, req: Req) -> Response {
     reply(
         async {
-            limited(&app, &req, Limit::Interaction)?;
+            limited(&app, &req, Limit::Interaction).await?;
             guard(&app, &req, &uid)?;
             let interaction = load(&app, &req, &uid).await?;
             require_login_step(&interaction)?;
@@ -477,7 +477,7 @@ async fn passkey_options(State(app): State<App>, Path(uid): Path<String>, req: R
 async fn passkey_verify(State(app): State<App>, Path(uid): Path<String>, req: Req) -> Response {
     reply(
         async {
-            limited(&app, &req, Limit::Interaction)?;
+            limited(&app, &req, Limit::Interaction).await?;
             guard(&app, &req, &uid)?;
             let interaction = load(&app, &req, &uid).await?;
             require_login_step(&interaction)?;
@@ -576,7 +576,7 @@ async fn require_claimable(app: &App, interaction: &Interaction) -> ApiResult<()
 
 async fn setup_verify(State(app): State<App>, Path(uid): Path<String>, req: Req) -> Response {
     reply(async {
-        limited(&app, &req, Limit::Setup)?;
+        limited(&app, &req, Limit::Setup).await?;
         guard(&app, &req, &uid)?;
         let interaction = load(&app, &req, &uid).await?;
         require_login_step(&interaction)?;
@@ -607,7 +607,7 @@ fn text(body: &Value, key: &str, max: usize) -> String {
 async fn setup_passkey_options(State(app): State<App>, Path(uid): Path<String>, req: Req) -> Response {
     reply(
         async {
-            limited(&app, &req, Limit::Interaction)?;
+            limited(&app, &req, Limit::Interaction).await?;
             guard(&app, &req, &uid)?;
             let interaction = load(&app, &req, &uid).await?;
             require_login_step(&interaction)?;
@@ -663,7 +663,7 @@ async fn setup_passkey_options(State(app): State<App>, Path(uid): Path<String>, 
 async fn setup_passkey_verify(State(app): State<App>, Path(uid): Path<String>, req: Req) -> Response {
     reply(
         async {
-            limited(&app, &req, Limit::Interaction)?;
+            limited(&app, &req, Limit::Interaction).await?;
             guard(&app, &req, &uid)?;
             let interaction = load(&app, &req, &uid).await?;
             require_login_step(&interaction)?;
@@ -735,7 +735,7 @@ fn link_expired() -> ApiError {
 async fn open_link(State(app): State<App>, req: Req) -> Response {
     reply(
         async {
-            limited(&app, &req, Limit::Setup)?;
+            limited(&app, &req, Limit::Setup).await?;
             if !req.same_origin(&app.issuer) {
                 return Err(problem(
                     StatusCode::FORBIDDEN,
@@ -783,7 +783,7 @@ async fn require_enrollment(app: &App, req: &Req, uid: &str) -> ApiResult<(Inter
 
 async fn enroll_options(State(app): State<App>, Path(uid): Path<String>, req: Req) -> Response {
     reply(async {
-        limited(&app, &req, Limit::Interaction)?;
+        limited(&app, &req, Limit::Interaction).await?;
         guard(&app, &req, &uid)?;
         let (interaction, enrollment) = require_enrollment(&app, &req, &uid).await?;
         let body = req.json();
@@ -832,7 +832,7 @@ async fn enroll_options(State(app): State<App>, Path(uid): Path<String>, req: Re
 async fn enroll_verify(State(app): State<App>, Path(uid): Path<String>, req: Req) -> Response {
     reply(
         async {
-            limited(&app, &req, Limit::Interaction)?;
+            limited(&app, &req, Limit::Interaction).await?;
             guard(&app, &req, &uid)?;
             let (interaction, enrollment) = require_enrollment(&app, &req, &uid).await?;
             let body = req.json();
