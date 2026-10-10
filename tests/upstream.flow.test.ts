@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import * as oidc from 'openid-client';
 import { SoftAuthenticator } from './authenticator.ts';
-import { Browser, freePort, startTestServer } from './harness.ts';
+import { Browser, freePort, SECRETS, startTestServer } from './harness.ts';
 import { mockGitHub, mockOidcIssuer, type GitHubUser, type MockAccount } from './mocks.ts';
 
 // Upstream sign-in, linking, invites and recovery, one test per threat in docs/PLAN.md §3.3.
@@ -278,6 +279,66 @@ describe('threat: compromised upstream account (§3.3)', () => {
     const { details } = await attacker.interaction('/console/login?fresh=1&passkey=1');
     expect(details.passkeyOnly).toBe(true);
     expect(details.providers).toEqual([]);
+    // …and the server holds to that: the corp account can't stand in for the passkey.
+    const { uid } = await attacker.interaction('/console/login?fresh=1&passkey=1');
+    const refused = await attacker.travel(`/interaction/${uid}/upstream/corp`);
+    expect(refused.url.searchParams.get('error')).toBe('passkey_required');
+  });
+});
+
+describe('acr_values (R11)', () => {
+  it('signs an upstream session in again with the passkey when an app asks for phr', async () => {
+    corp.signInAs(corpUser('mae', 'mae@corp.example', 'Mae'));
+    const mae = person();
+    await mae.viaUpstream('corp');
+    const auth = new SoftAuthenticator(server.issuer);
+    const options = await (
+      await mae.api('/api/me/passkeys/options', { method: 'POST', json: {} })
+    ).json();
+    await mae.api('/api/me/passkeys', { method: 'POST', json: { response: auth.create(options) } });
+
+    const config = await oidc.discovery(
+      new URL(server.issuer),
+      'rp-first',
+      SECRETS.RP_FIRST_SECRET,
+      oidc.ClientSecretBasic(SECRETS.RP_FIRST_SECRET),
+      { execute: [oidc.allowInsecureRequests] },
+    );
+    const verifier = oidc.randomPKCECodeVerifier();
+    const authorize = (acr: string) =>
+      oidc.buildAuthorizationUrl(config, {
+        redirect_uri: 'https://rp.example/cb',
+        scope: 'openid',
+        acr_values: acr,
+        code_challenge: 'x'.repeat(43),
+        code_challenge_method: 'S256',
+      }).href;
+
+    // The corp session is level 0: enough for "0", not for "phr".
+    expect((await mae.hs.follow(authorize('0'))).location?.origin).toBe('https://rp.example');
+    const { details, post } = await mae.interaction(
+      oidc.buildAuthorizationUrl(config, {
+        redirect_uri: 'https://rp.example/cb',
+        scope: 'openid',
+        acr_values: 'phr',
+        code_challenge: await oidc.calculatePKCECodeChallenge(verifier),
+        code_challenge_method: 'S256',
+      }).href,
+    );
+    expect(details).toMatchObject({ passkeyOnly: true, stepUp: false, providers: [] });
+
+    const signed = await post('passkey/verify', {
+      response: auth.get(await (await post('passkey/options')).json()),
+    });
+    expect(signed.status).toBe(200);
+    const { location } = await mae.hs.follow((await signed.json()).redirectTo);
+    const tokens = await oidc.authorizationCodeGrant(config, location!, {
+      pkceCodeVerifier: verifier,
+    });
+    expect(tokens.claims()).toMatchObject({ acr: 'phr', amr: ['pop', 'user', 'mfa'] });
+
+    // The session is phr now, so the next request for it goes straight through.
+    expect((await mae.hs.follow(authorize('phr'))).location?.origin).toBe('https://rp.example');
   });
 });
 

@@ -2,6 +2,7 @@
 //! userinfo, introspection, revocation, RP-initiated and back-channel logout. Behaviour follows
 //! oidc-provider 9 as Handstamp configured it, so the OpenID conformance results carry over.
 
+pub mod acr;
 pub mod authorize;
 pub mod discovery;
 pub mod logout;
@@ -365,7 +366,7 @@ pub struct IdTokenInput<'a> {
 }
 
 /// An RS256 ID token. With conformIdTokenClaims, scope-based profile and email claims go to
-/// userinfo; the ID token gets the openid-scope claims (sub, groups, amr) plus individually
+/// userinfo; the ID token gets the openid-scope claims (sub, groups, acr, amr) plus individually
 /// requested ones (D6).
 pub async fn id_token(app: &App, input: IdTokenInput<'_>) -> Result<String> {
     let granted: BTreeSet<String> = input
@@ -387,6 +388,7 @@ pub async fn id_token(app: &App, input: IdTokenInput<'_>) -> Result<String> {
     if let Some(amr) = input.amr.filter(|a| !a.is_empty()) {
         claims.insert("amr".into(), json!(amr));
     }
+    claims.insert("acr".into(), json!(acr::of(input.amr)));
     claims.insert("auth_time".into(), json!(input.auth_time));
     if let Some(nonce) = input.nonce {
         claims.insert("nonce".into(), json!(nonce));

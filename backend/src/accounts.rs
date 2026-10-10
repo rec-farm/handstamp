@@ -21,9 +21,10 @@ pub fn scope_claims(scope: &str) -> &'static [&'static str] {
 }
 
 /// Every claim discovery advertises.
-pub const CLAIMS_SUPPORTED: [&str; 11] = [
+pub const CLAIMS_SUPPORTED: [&str; 12] = [
     "sub",
     "groups",
+    "acr",
     "amr",
     "name",
     "preferred_username",

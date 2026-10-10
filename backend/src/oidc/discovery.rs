@@ -14,6 +14,7 @@ use crate::{accounts::CLAIMS_SUPPORTED, app::App, http::Out};
 pub fn document(issuer: &str) -> Value {
     let at = |path: &str| format!("{issuer}{path}");
     json!({
+        "acr_values_supported": super::acr::SUPPORTED,
         "authorization_endpoint": at("/auth"),
         "claims_parameter_supported": true,
         "claims_supported": CLAIMS_SUPPORTED,

@@ -125,6 +125,9 @@ async fn start(State(app): State<App>, Path((uid, slug)): Path<(String, String)>
     if interaction.uid != uid || interaction.prompt.name != "login" {
         return see_other(&format!("/interaction/{}", interaction.uid), vec![]);
     }
+    if crate::oidc::acr::needs_passkey(&interaction.params) {
+        return see_other(&back(&interaction.uid, "passkey_required"), vec![]);
+    }
     match begin(&app, &slug, "login", Some(interaction.uid.clone()), None, None).await {
         Ok(Some((url, cookie))) => see_other(&url, vec![cookie]),
         Ok(None) => see_other(&back(&interaction.uid, "provider_unavailable"), vec![]),

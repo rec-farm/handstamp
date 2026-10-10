@@ -7,14 +7,5 @@
     "condition": "VerifyScopesReturnedInUserInfoClaims",
     "expected-result": "warning",
     "comment": "Handstamp stores name and username only; it has no given_name, family_name, picture, etc. to return."
-  },
-  {
-    "test-name": "oidcc-ensure-request-with-acr-values-succeeds",
-    "variant": "*",
-    "configuration-filename": "handstamp-oidcc.json",
-    "current-block": "Verify authorization endpoint response",
-    "condition": "ValidateIdTokenACRClaimAgainstAcrValuesRequest",
-    "expected-result": "warning",
-    "comment": "acr / acr_values support is deferred past v1 (docs/PLAN.md R11). The spec says SHOULD."
   }
 ]
