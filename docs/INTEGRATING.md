@@ -158,6 +158,14 @@ Without one, the app's session simply lives on until it expires.
   }
   ```
 
+The R.E.C. apps serve it at these paths, after the origin set in each app's own config:
+
+| App       | Back-channel logout URI                            |
+| --------- | -------------------------------------------------- |
+| Paramtune | `<PUBLIC_ORIGIN>/api/auth/backchannel-logout`      |
+| StillUp   | `<APP_ORIGIN>/api/v1/auth/oidc/backchannel-logout` |
+| Valtr     | In progress; see its own docs.                     |
+
 The URI follows the redirect URI rules: absolute, `https://` (plain `http://` only for
 `localhost` and `*.localhost`), no wildcard, no `#fragment`, no credentials. Once it's set, ID
 tokens for the app carry `sid`; discovery advertises `backchannel_logout_supported` and
