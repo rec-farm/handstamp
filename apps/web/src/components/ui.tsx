@@ -1,5 +1,8 @@
 import { useId, type ButtonHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
 import { ChevronDown, CircleAlert, LoaderCircle, TriangleAlert } from 'lucide-react';
+// Outlined logo files from rec-brand logos/ (brand v1.7.0). Copy new versions; never edit them.
+import lockupCream from '../assets/brand/handstamp-lockup-cream.svg';
+import lockupInk from '../assets/brand/handstamp-lockup-ink.svg';
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -71,14 +74,29 @@ export function Callout({ tone, children }: { tone: 'warning' | 'danger'; childr
   );
 }
 
+// The HANDSTAMP lockup (DESIGN §2.5, §2.8): cream on dark surfaces, ink on Paper. `onDark` is for
+// surfaces that stay dark in both themes, like the sidebar.
+export function Lockup({ className, onDark = false }: { className: string; onDark?: boolean }) {
+  return (
+    <>
+      <img
+        src={lockupCream}
+        alt="Handstamp"
+        className={`${className} w-auto ${onDark ? '' : 'light:hidden'}`}
+      />
+      {!onDark && (
+        <img src={lockupInk} alt="Handstamp" className={`${className} hidden w-auto light:block`} />
+      )}
+    </>
+  );
+}
+
 // One calm card in the middle of the page: the product's face (DESIGN §11, plan §7).
 export function CardPage({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col items-center px-4 py-10 sm:py-16">
-      <header className="mb-8 flex items-center gap-3 text-fg">
-        {/* TODO(brand): the Handstamp mark comes from rec-brand/build.py (§2.10). */}
-        <span aria-hidden className="size-6 rounded-xs border border-dashed border-border-strong" />
-        <span className="wordmark">Handstamp</span>
+      <header className="mb-8">
+        <Lockup className="h-8" />
       </header>
       <main className="w-full max-w-[420px] rounded-sm border border-border bg-surface-1 p-6 sm:p-8">
         {children}
