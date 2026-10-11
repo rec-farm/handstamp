@@ -3,7 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "license": "Apache-2.0",
+  "description": "The passwordless OpenID Connect provider for the R.E.C. product family.",
+  "license": "MIT",
+  "author": "Rodrigo Espinosa Curbelo",
+  "homepage": "https://rec.farm/handstamp/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rec-farm/handstamp.git"
+  },
+  "bugs": "https://github.com/rec-farm/handstamp/issues",
   "packageManager": "pnpm@11.9.0",
   "engines": {
     "node": ">=24"

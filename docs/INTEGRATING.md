@@ -2,7 +2,7 @@
 
 Handstamp is a plain OpenID Connect provider. An app connects to it with a standard OIDC client
 configuration, with nothing specific to Handstamp, so the same settings work with Authentik,
-Keycloak or Zitadel. This guide uses `https://id.rec.farm` as the issuer and Paramtune as the
+Keycloak or Zitadel. This guide uses `https://id.example.com` as the issuer and Paramtune as the
 example app.
 
 - [Register the app](#register-the-app)
@@ -18,18 +18,18 @@ example app.
 
 In Handstamp, **Admin → Apps → Add an app**:
 
-| Field                     | Example                                                    | Notes                                                                                                            |
-| ------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Name                      | `Paramtune`                                                | Shown on the sign-in card.                                                                                       |
-| Client ID                 | `paramtune`                                                | Lowercase, stable. It goes into the app's settings.                                                              |
-| Redirect URIs             | `https://paramtune.rec.farm/api/auth/oauth2/callback/oidc` | Matched exactly: no wildcards, no prefixes. `https://` only, except `http://localhost` and `http://*.localhost`. |
-| Post-logout redirect URIs | `https://paramtune.rec.farm/`                              | Where Handstamp may send people after signing out.                                                               |
-| Scopes it may ask for     | `openid profile email groups`                              | Add `offline_access` only if the app needs refresh tokens.                                                       |
-| Client type               | Server app, secret in the header                           | `client_secret_basic`, the default. "Public app" is for SPAs and native apps with no backend; it requires PKCE.  |
-| Who may sign in           | Only members of Paramtune users                            | Optional. Anyone else is turned away at Handstamp with a clear message and never reaches the app.                |
-| One of your own apps      | on                                                         | Skips the "Allow this app?" screen. Leave off for apps run by someone else.                                      |
-| Require PKCE              | on                                                         | Leave on.                                                                                                        |
-| Back-channel logout URI   | `https://paramtune.rec.farm/api/auth/backchannel-logout`   | Optional. See [Signing out](#signing-out).                                                                       |
+| Field                     | Example                                                       | Notes                                                                                                            |
+| ------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Name                      | `Paramtune`                                                   | Shown on the sign-in card.                                                                                       |
+| Client ID                 | `paramtune`                                                   | Lowercase, stable. It goes into the app's settings.                                                              |
+| Redirect URIs             | `https://paramtune.example.com/api/auth/oauth2/callback/oidc` | Matched exactly: no wildcards, no prefixes. `https://` only, except `http://localhost` and `http://*.localhost`. |
+| Post-logout redirect URIs | `https://paramtune.example.com/`                              | Where Handstamp may send people after signing out.                                                               |
+| Scopes it may ask for     | `openid profile email groups`                                 | Add `offline_access` only if the app needs refresh tokens.                                                       |
+| Client type               | Server app, secret in the header                              | `client_secret_basic`, the default. "Public app" is for SPAs and native apps with no backend; it requires PKCE.  |
+| Who may sign in           | Only members of Paramtune users                               | Optional. Anyone else is turned away at Handstamp with a clear message and never reaches the app.                |
+| One of your own apps      | on                                                            | Skips the "Allow this app?" screen. Leave off for apps run by someone else.                                      |
+| Require PKCE              | on                                                            | Leave on.                                                                                                        |
+| Back-channel logout URI   | `https://paramtune.example.com/api/auth/backchannel-logout`   | Optional. See [Signing out](#signing-out).                                                                       |
 
 The client secret is shown **once**, together with a ready-to-paste block of settings. Copy it
 then; Handstamp only stores it encrypted and can't show it again. Lost it? **Rotate secret** on
@@ -47,7 +47,7 @@ Every R.E.C. app reads the same variables:
 
 | Variable             | Example                       | Meaning                                                                                         |
 | -------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------- |
-| `OIDC_ISSUER`        | `https://id.rec.farm`         | The issuer. Discovery is at `$OIDC_ISSUER/.well-known/openid-configuration`. No trailing slash. |
+| `OIDC_ISSUER`        | `https://id.example.com`      | The issuer. Discovery is at `$OIDC_ISSUER/.well-known/openid-configuration`. No trailing slash. |
 | `OIDC_CLIENT_ID`     | `paramtune`                   | From the app's page in Handstamp.                                                               |
 | `OIDC_CLIENT_SECRET` | `hs_sec_…`                    | Shown once when the app is created or its secret rotated.                                       |
 | `OIDC_SCOPES`        | `openid profile email groups` | Must be a subset of the scopes the app may ask for.                                             |
@@ -125,9 +125,9 @@ Clear your own session, then send the browser to Handstamp's end-session endpoin
 Handstamp session ends too:
 
 ```
-https://id.rec.farm/session/end?client_id=paramtune
+https://id.example.com/session/end?client_id=paramtune
   &id_token_hint=<the ID token>
-  &post_logout_redirect_uri=https://paramtune.rec.farm/
+  &post_logout_redirect_uri=https://paramtune.example.com/
 ```
 
 `post_logout_redirect_uri` must be one of the app's registered post-logout URIs, matched exactly.
@@ -151,9 +151,9 @@ Without one, the app's session simply lives on until it expires.
   {
     "clientId": "paramtune",
     "name": "Paramtune",
-    "redirectUris": ["https://paramtune.rec.farm/api/auth/oauth2/callback/oidc"],
-    "postLogoutRedirectUris": ["https://paramtune.rec.farm/"],
-    "backchannelLogoutUri": "https://paramtune.rec.farm/api/auth/backchannel-logout",
+    "redirectUris": ["https://paramtune.example.com/api/auth/oauth2/callback/oidc"],
+    "postLogoutRedirectUris": ["https://paramtune.example.com/"],
+    "backchannelLogoutUri": "https://paramtune.example.com/api/auth/backchannel-logout",
     "secretEnv": "PARAMTUNE_OIDC_CLIENT_SECRET"
   }
   ```
@@ -193,7 +193,7 @@ recovery, all of them.
 
 ```http
 POST /api/auth/backchannel-logout HTTP/1.1
-Host: paramtune.rec.farm
+Host: paramtune.example.com
 User-Agent: Handstamp
 Content-Type: application/x-www-form-urlencoded
 
@@ -205,7 +205,7 @@ The `logout_token` is a JWT signed with the same keys as ID tokens. Header:
 
 | Claim    | Value                                                                                                      |
 | -------- | ---------------------------------------------------------------------------------------------------------- |
-| `iss`    | The issuer, e.g. `https://id.rec.farm`.                                                                    |
+| `iss`    | The issuer, e.g. `https://id.example.com`.                                                                 |
 | `aud`    | Your client ID, as a string.                                                                               |
 | `iat`    | When it was issued.                                                                                        |
 | `exp`    | `iat` + 120 seconds.                                                                                       |
@@ -326,7 +326,7 @@ The button: `authClient.signIn.oauth2({ providerId: 'oidc', callbackURL: '/' })`
 Paramtune's `.env`:
 
 ```sh
-OIDC_ISSUER=https://id.rec.farm
+OIDC_ISSUER=https://id.example.com
 OIDC_CLIENT_ID=paramtune
 OIDC_CLIENT_SECRET=hs_sec_…
 OIDC_SCOPES=openid profile email groups

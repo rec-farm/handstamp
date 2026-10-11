@@ -2,7 +2,7 @@
 
 The passwordless OpenID Connect provider for the R.E.C. product family. Small, self-hostable,
 standards-only: any app that speaks OIDC can use it, and it can be swapped for Authentik, Keycloak
-or Zitadel without touching the app.
+or Zitadel without touching the app. Product page: [rec.farm/handstamp](https://rec.farm/handstamp/).
 
 > **Status: v1 (M5).** Passkeys, upstream sign-in, invites and recovery, the account page, the
 > admin console, a production image, and full OpenID conformance (Basic OP, Config OP). See
@@ -65,6 +65,16 @@ The integration tests need the test database: `docker compose exec db psql -U ha
 | `tests`              | Black-box flow tests and Chromium e2e tests against the `handstamp` binary         |
 | `conformance`        | Pinned OIDF conformance suite setup                                                |
 
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## Security
+
+Report vulnerabilities privately through
+[GitHub private vulnerability reporting](https://github.com/rec-farm/handstamp/security/advisories/new),
+not in a public issue. The security model is in [`docs/SECURITY.md`](docs/SECURITY.md).
+
 ## License
 
-Apache-2.0 · RECIAM SAS
+MIT · © 2026 Rodrigo Espinosa Curbelo. Names and logos: see [NOTICE](NOTICE).

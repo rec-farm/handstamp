@@ -32,7 +32,7 @@ RUN pnpm --filter @handstamp/web build
 FROM alpine:3.23 AS runtime
 LABEL org.opencontainers.image.title="Handstamp" \
       org.opencontainers.image.description="Passwordless OpenID Connect provider for the R.E.C. product family" \
-      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="RECIAM SAS"
 RUN apk add --no-cache ca-certificates \
   && addgroup -S -g 1000 handstamp && adduser -S -u 1000 -G handstamp -h /app handstamp
