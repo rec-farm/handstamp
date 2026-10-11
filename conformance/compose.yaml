@@ -14,7 +14,8 @@ services:
       retries: 30
   handstamp:
     image: handstamp:conformance
-    build: { context: .., dockerfile: Dockerfile }
+    # Plain release profile: same code, minutes faster to build than the shipped image's full LTO.
+    build: { context: .., dockerfile: Dockerfile, args: { CARGO_PROFILE: release } }
     environment:
       DATABASE_URL: postgres://handstamp:handstamp@db:5432/handstamp
       HANDSTAMP_ISSUER: https://handstamp.test

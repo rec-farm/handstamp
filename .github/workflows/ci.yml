@@ -1,9 +1,13 @@
 name: CI
 on:
   push:
+    branches: [master]
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   verify:
     runs-on: ubuntu-24.04
@@ -42,8 +46,18 @@ jobs:
       - run: pnpm typecheck
       # Rust unit tests, then the flow tests against the binary.
       - run: pnpm test
-      - run: pnpm build
-      - run: pnpm exec playwright install --with-deps chromium
+      # `pnpm e2e` builds the web app and reuses the debug binary from the flow tests. The release
+      # binary and the image are built by image.yml.
+      - id: playwright
+        run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+      - id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+      - if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
       - run: pnpm e2e
       - run: pnpm audit --prod --audit-level high
-      - run: docker build -t handstamp:ci .
