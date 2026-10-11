@@ -263,8 +263,8 @@ and fall back to a fixed page, when the value:
 The robust form: parse it against your own origin (`new URL(value, origin)`) after the checks
 above, require the same origin, and require the normalized path not to start with `//`. Also keep
 your own API and auth routes (`/api/…`) off the list of allowed targets. Paramtune's
-`safe_return` ([`backend/src/auth.rs`](https://github.com/RodrigoEspinosa/paramtune/blob/master/backend/src/auth.rs))
-and `safeReturnTo` ([`src/lib/returnTo.ts`](https://github.com/RodrigoEspinosa/paramtune/blob/master/src/lib/returnTo.ts))
+`safe_return` ([`backend/src/auth.rs`](https://github.com/rec-farm/paramtune/blob/master/backend/src/auth.rs))
+and `safeReturnTo` ([`src/lib/returnTo.ts`](https://github.com/rec-farm/paramtune/blob/master/src/lib/returnTo.ts))
 do all of this, with a test for each case.
 
 ## Worked example: Paramtune with Better Auth
