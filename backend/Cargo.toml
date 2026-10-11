@@ -46,7 +46,12 @@ uuid = { version = "1", features = ["serde"] }
 http-body-util = "0.1"
 
 [profile.release]
-lto = true
-codegen-units = 1
 strip = true
 panic = "abort"
+
+# What the image ships (Dockerfile): release plus whole-program LTO. Slower to build, so local
+# and CI release builds stay on plain `release`.
+[profile.dist]
+inherits = "release"
+lto = true
+codegen-units = 1

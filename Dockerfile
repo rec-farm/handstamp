@@ -1,12 +1,21 @@
 # One image, one process: the Rust server (backend/) serves the OpenID provider, the API and the
 # built SPA (docs/PLAN.md §1.2). The runtime is a bare Alpine with one static binary.
 FROM rust:1.92-alpine AS server
+# Cargo profile (and target/ subdirectory) to build: `dist` for the shipped image, `release` where
+# build time matters more than whole-program LTO (the conformance run).
+ARG CARGO_PROFILE=dist
 RUN apk add --no-cache musl-dev
 WORKDIR /app
+# Build dependencies first, against a stub main and no migrations, so source and migration edits
+# don't recompile them.
 COPY backend/Cargo.toml backend/Cargo.lock backend/build.rs backend/
+RUN mkdir -p backend/src backend/migrations && echo "fn main() {}" > backend/src/main.rs \
+    && cargo build --profile "$CARGO_PROFILE" --locked --manifest-path backend/Cargo.toml && rm -rf backend/src
 COPY backend/migrations backend/migrations
 COPY backend/src backend/src
-RUN cargo build --release --locked --manifest-path backend/Cargo.toml
+RUN touch backend/src/main.rs backend/build.rs \
+    && cargo build --profile "$CARGO_PROFILE" --locked --manifest-path backend/Cargo.toml \
+    && cp "backend/target/$CARGO_PROFILE/handstamp" /app/handstamp
 
 FROM node:24-alpine AS web
 ENV PNPM_HOME=/pnpm
@@ -28,7 +37,7 @@ LABEL org.opencontainers.image.title="Handstamp" \
 RUN apk add --no-cache ca-certificates \
   && addgroup -S -g 1000 handstamp && adduser -S -u 1000 -G handstamp -h /app handstamp
 # `docker compose exec handstamp handstamp invite` and friends (see docs/DEPLOYING.md).
-COPY --from=server /app/backend/target/release/handstamp /usr/local/bin/handstamp
+COPY --from=server /app/handstamp /usr/local/bin/handstamp
 COPY --from=web /app/apps/web/dist /app/web/dist
 ENV HANDSTAMP_ENV=production HANDSTAMP_WEB_DIST=/app/web/dist
 USER handstamp
