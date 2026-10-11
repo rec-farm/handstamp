@@ -14,3 +14,6 @@ conformance/results/
 
 # Rust (backend/)
 backend/target/
+
+# Tool output
+.playwright-mcp/

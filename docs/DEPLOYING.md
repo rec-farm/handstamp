@@ -1,7 +1,7 @@
 # Deploying Handstamp
 
 Handstamp is one container (a single Rust binary serving the OIDC endpoints, the API and the web UI) plus
-Postgres 17. It sits behind your TLS reverse proxy. This guide uses `https://id.rec.farm` as the
+Postgres 17. It sits behind your TLS reverse proxy. This guide uses `https://id.example.com` as the
 example issuer.
 
 - [Before you start](#before-you-start)
@@ -19,7 +19,7 @@ example issuer.
 
 **Pick the issuer once.** `HANDSTAMP_ISSUER` is the OIDC issuer apps trust, and its host is the
 WebAuthn relying party ID that every passkey is bound to. Changing it later breaks every passkey
-and every app's configuration. Use a dedicated subdomain (`id.rec.farm`), with no path.
+and every app's configuration. Use a dedicated subdomain (`id.example.com`), with no path.
 
 **Generate the root key and keep it safe.**
 
@@ -34,7 +34,7 @@ backups ([Backups](#backups)). A database without its key can't be restored usef
 The minimum `.env`:
 
 ```sh
-HANDSTAMP_ISSUER=https://id.rec.farm
+HANDSTAMP_ISSUER=https://id.example.com
 HANDSTAMP_SECRET_KEY=…                 # from openssl above
 POSTGRES_PASSWORD=…                    # any long random string; compose wires DATABASE_URL from it
 TRUST_PROXY=1                          # one reverse proxy hop (Traefik, Caddy, nginx)
@@ -66,7 +66,7 @@ real addresses.
    `./compose.yaml`. It builds the image from the `Dockerfile` and runs Postgres next to it.
 2. **Environment:** paste the `.env` from above into the service's Environment tab. Dokploy
    writes it to `.env` next to `compose.yaml`, which is where `env_file` reads it.
-3. **Domain:** in the Domains tab, add `id.rec.farm` → service `handstamp`, container port
+3. **Domain:** in the Domains tab, add `id.example.com` → service `handstamp`, container port
    `3000`, HTTPS on with a Let's Encrypt certificate. Point the DNS record at your Dokploy host.
    Traefik reaches the container over Docker's network, so the `127.0.0.1` port binding in
    `compose.yaml` doesn't matter here.
@@ -94,7 +94,7 @@ Handstamp listens on `127.0.0.1:3000` (set `HANDSTAMP_PORT` to change the host p
 proxy at it. With Caddy:
 
 ```caddy
-id.rec.farm {
+id.example.com {
 	reverse_proxy 127.0.0.1:3000
 }
 ```
@@ -107,7 +107,7 @@ development uses.
 A fresh instance has no admin. On start it logs a one-time setup code:
 
 ```
-  Handstamp has no admin yet. Open https://id.rec.farm/setup and enter this code:
+  Handstamp has no admin yet. Open https://id.example.com/setup and enter this code:
 
       HS-FNZBH-7N242-Y3QVM-435JQ
 

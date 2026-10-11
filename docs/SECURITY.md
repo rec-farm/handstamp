@@ -2,15 +2,13 @@
 
 ## Reporting a vulnerability
 
-Please report it privately, not in a public issue: use **Report a vulnerability** on the
-repository's Security tab (GitHub private vulnerability reporting).
-<!-- TODO(rec): add a security contact address once there is one, e.g. security@… -->
+Please report it privately, not in a public issue, through GitHub private vulnerability reporting:
+[report a vulnerability](https://github.com/rec-farm/handstamp/security/advisories/new).
 
-Include what you found, how to reproduce it, and the version or commit. We'll acknowledge it
-within a few working days, keep you updated, and credit you in the release notes unless you'd
-rather not be.
+Include what you found, how to reproduce it, and the version or commit. We'll acknowledge it,
+keep you updated, and credit you in the advisory unless you'd rather not be.
 
-Only the latest release gets security fixes.
+Security fixes land on the default branch; run the latest version.
 
 ## What Handstamp protects, and how
 

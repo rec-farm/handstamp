@@ -4,6 +4,15 @@
   "private": true,
   "type": "module",
   "description": "Black-box flow and browser tests against the handstamp binary.",
+  "license": "MIT",
+  "author": "Rodrigo Espinosa Curbelo",
+  "homepage": "https://rec.farm/handstamp/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rec-farm/handstamp.git",
+    "directory": "tests"
+  },
+  "bugs": "https://github.com/rec-farm/handstamp/issues",
   "scripts": {
     "typecheck": "tsc"
   },

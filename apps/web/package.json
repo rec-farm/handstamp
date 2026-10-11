@@ -3,6 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "description": "The Handstamp web app: sign-in, consent, account and admin console.",
+  "license": "MIT",
+  "author": "Rodrigo Espinosa Curbelo",
+  "homepage": "https://rec.farm/handstamp/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rec-farm/handstamp.git",
+    "directory": "apps/web"
+  },
+  "bugs": "https://github.com/rec-farm/handstamp/issues",
   "scripts": {
     "build": "vite build",
     "typecheck": "tsc"

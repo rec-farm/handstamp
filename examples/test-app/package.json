@@ -4,6 +4,15 @@
   "private": true,
   "type": "module",
   "description": "A tiny relying party for trying Handstamp locally. Not part of the product.",
+  "license": "MIT",
+  "author": "Rodrigo Espinosa Curbelo",
+  "homepage": "https://rec.farm/handstamp/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rec-farm/handstamp.git",
+    "directory": "examples/test-app"
+  },
+  "bugs": "https://github.com/rec-farm/handstamp/issues",
   "scripts": {
     "start": "tsx --env-file=../../.env src/main.ts",
     "typecheck": "tsc",

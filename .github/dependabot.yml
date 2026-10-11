@@ -1,0 +1,47 @@
+version: 2
+# GitHub Actions: weekly version bumps, grouped into one PR (actions are pinned to SHAs).
+# npm, cargo and docker: routine version bumps are disabled (open-pull-requests-limit: 0).
+# Dependabot security updates are enabled in the repo settings and still open PRs for
+# vulnerable dependencies; they're grouped into a single PR per ecosystem.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - '*'
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      security:
+        applies-to: security-updates
+        patterns:
+          - '*'
+
+  - package-ecosystem: cargo
+    directory: /backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      security:
+        applies-to: security-updates
+        patterns:
+          - '*'
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      security:
+        applies-to: security-updates
+        patterns:
+          - '*'
