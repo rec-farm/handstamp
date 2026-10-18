@@ -543,6 +543,10 @@ pub async fn introspection(State(app): State<App>, req: Req) -> Response {
             .get("token")
             .ok_or_else(|| OidcError::invalid_request("missing required parameter 'token'"))?;
         let inactive = json!({ "active": false });
+        let actor_type = |sub: String| {
+            let app = app.clone();
+            async move { accounts::actor_type(&app.pool.get().await?, &sub).await }
+        };
         if let Some(at) = find_access_token(&app, token).await?
             && at.client_id == client.client_id
         {
@@ -554,6 +558,7 @@ pub async fn introspection(State(app): State<App>, req: Req) -> Response {
                 "iss": app.issuer,
                 "scope": at.scope,
                 "sub": at.account_id,
+                "actor_type": actor_type(at.account_id.clone()).await?,
                 "token_type": "Bearer",
             }));
         }
@@ -571,6 +576,7 @@ pub async fn introspection(State(app): State<App>, req: Req) -> Response {
                 "iss": app.issuer,
                 "scope": rt.scope,
                 "sub": rt.account_id,
+                "actor_type": actor_type(rt.account_id.clone()).await?,
                 "token_type": "refresh_token",
             }));
         }

@@ -225,7 +225,9 @@ export function Choices<T extends string>({
     <fieldset disabled={disabled}>
       <legend className="label-stamp text-fg">{label}</legend>
       <p className="mt-1 text-body-sm text-fg-muted">{hint}</p>
-      <div className="mt-2 grid gap-3 sm:grid-cols-3">
+      <div
+        className={`mt-2 grid gap-3 ${options.length === 4 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}
+      >
         {options.map((o) => (
           <label
             key={o.value}

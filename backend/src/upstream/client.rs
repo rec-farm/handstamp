@@ -9,15 +9,70 @@ use std::{
 };
 
 use openidconnect::{
-    AccessToken, AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse,
-    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, SubjectIdentifier, TokenResponse,
-    core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata, CoreUserInfoClaims},
+    AccessToken, AdditionalClaims, AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce,
+    OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, SubjectIdentifier, TokenResponse,
+    UserInfoClaims,
+    core::{CoreAuthenticationFlow, CoreClient, CoreGenderClaim, CoreProviderMetadata},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::providers::{Provider, UpstreamIdentity};
-use crate::crypto::{b64url, random_token, sha256};
+use super::providers::{Owner, Provider, UpstreamIdentity};
+use crate::crypto::{b64url, b64url_decode, random_token, sha256};
+
+/// Claims beyond OIDC Core that agent providers send (AgentID: `actor_type` and the owner).
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+struct AgentClaims {
+    #[serde(default)]
+    actor_type: Option<String>,
+    #[serde(default)]
+    owner_sub: Option<String>,
+    #[serde(default)]
+    owner_name: Option<String>,
+    #[serde(default)]
+    owner_email: Option<String>,
+}
+impl AdditionalClaims for AgentClaims {}
+
+impl AgentClaims {
+    /// Fills in what `self` lacks from `other`.
+    fn or(self, other: Self) -> Self {
+        Self {
+            actor_type: self.actor_type.or(other.actor_type),
+            owner_sub: self.owner_sub.or(other.owner_sub),
+            owner_name: self.owner_name.or(other.owner_name),
+            owner_email: self.owner_email.or(other.owner_email),
+        }
+    }
+
+    fn owner(&self) -> Option<Owner> {
+        let clean = |v: &Option<String>| {
+            v.as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string)
+        };
+        let owner = Owner {
+            subject: clean(&self.owner_sub),
+            name: clean(&self.owner_name),
+            email: clean(&self.owner_email),
+        };
+        (owner != Owner::default()).then_some(owner)
+    }
+}
+
+/// The extra claims of an ID token `openidconnect` has already verified (its core claim types
+/// drop them). Only ever called on a verified token.
+fn verified_extra_claims(id_token: &str) -> AgentClaims {
+    id_token
+        .split('.')
+        .nth(1)
+        .and_then(b64url_decode)
+        .and_then(|payload| serde_json::from_slice(&payload).ok())
+        .unwrap_or_default()
+}
+
+type UserInfo = UserInfoClaims<AgentClaims, CoreGenderClaim>;
 
 /// What has to survive the round trip to the provider (kept in a sealed cookie).
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -203,9 +258,12 @@ pub async fn finish(
     let mut email = claims.email().map(|e| e.to_string());
     let mut email_verified = claims.email_verified();
     let mut name = claims.name().and_then(|n| n.get(None)).map(|n| n.to_string());
-    // Many issuers (Handstamp included) put email only in userinfo. The subject must match.
-    if email.is_none() && client.user_info_url().is_some() {
-        let info: Option<CoreUserInfoClaims> = match client.user_info(
+    let mut extra = verified_extra_claims(&id_token.to_string());
+    // Many issuers (Handstamp included) put email only in userinfo, and AgentID may put the
+    // owner there. The subject must match.
+    let agentid = provider.is_agentid();
+    if (email.is_none() || agentid) && client.user_info_url().is_some() {
+        let info: Option<UserInfo> = match client.user_info(
             AccessToken::new(tokens.access_token().secret().clone()),
             Some(SubjectIdentifier::new(subject.clone())),
         ) {
@@ -213,11 +271,18 @@ pub async fn finish(
             Err(_) => None,
         };
         if let Some(info) = info {
-            email = info.email().map(|e| e.to_string());
-            email_verified = email_verified.or(info.email_verified());
+            if email.is_none() {
+                email = info.email().map(|e| e.to_string());
+                email_verified = email_verified.or(info.email_verified());
+            }
             name = name.or_else(|| info.name().and_then(|n| n.get(None)).map(|n| n.to_string()));
+            extra = extra.or(info.additional_claims().clone());
         }
     }
+    let actor_type = extra
+        .actor_type
+        .clone()
+        .filter(|t| matches!(t.as_str(), "agent" | "person"));
     Ok(UpstreamIdentity {
         issuer,
         subject,
@@ -226,6 +291,8 @@ pub async fn finish(
         email_verified: email_verified == Some(true),
         name,
         orgs: None,
+        owner: if agentid { extra.owner() } else { None },
+        actor_type,
     })
 }
 
@@ -343,6 +410,8 @@ async fn github_identity(
         name: user.get("name").and_then(Value::as_str).map(str::to_string),
         login_hint: user.get("login").and_then(Value::as_str).map(str::to_string),
         orgs,
+        actor_type: None,
+        owner: None,
     })
 }
 
@@ -415,6 +484,23 @@ mod tests {
         };
         assert_eq!(scopes(&restricted), ["read:user", "user:email", "read:org"]);
         assert_eq!(scopes(&provider("oidc")), ["openid", "email", "profile"]);
+    }
+
+    #[test]
+    fn reads_agent_claims_from_a_verified_payload() {
+        let payload =
+            b64url(br#"{"sub":"a","actor_type":"agent","owner_sub":"o","owner_name":" Ada ","owner_email":""}"#);
+        let extra = verified_extra_claims(&format!("h.{payload}.s"));
+        assert_eq!(extra.actor_type.as_deref(), Some("agent"));
+        assert_eq!(
+            extra.owner(),
+            Some(Owner {
+                subject: Some("o".into()),
+                name: Some("Ada".into()),
+                email: None
+            })
+        );
+        assert!(verified_extra_claims("not-a-jwt").owner().is_none());
     }
 
     #[tokio::test]

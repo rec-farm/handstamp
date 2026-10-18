@@ -38,6 +38,8 @@ const RETURN_ERRORS: Record<string, string> = {
     "Sign-up here is limited to certain email domains, and this account's email isn't one of them. Ask your admin for an invite.",
   org: 'Sign-up here is limited to members of certain GitHub organizations. Ask your admin for an invite.',
   identity_taken: 'That account is already connected to a different Handstamp account.',
+  not_an_agent: 'AgentID is for agents. People sign in another way.',
+  account_kind: "That account can't be added here: agents and people keep separate accounts.",
   account_disabled: 'This account is turned off. Ask your admin.',
   upstream_cancelled: 'Sign-in was cancelled. Pick a way to sign in when you are ready.',
   upstream_failed: "We couldn't finish signing in with that provider. Try again, or use a passkey.",

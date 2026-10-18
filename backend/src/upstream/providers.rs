@@ -1,4 +1,5 @@
-//! Upstream identity providers: GitHub, Google and generic OIDC issuers (docs/PLAN.md §1.4 B).
+//! Upstream identity providers: GitHub, Google, generic OIDC issuers (docs/PLAN.md §1.4 B), and
+//! AgentID for agent accounts (docs/INTEGRATING.md, "Agent accounts").
 
 use std::collections::HashMap;
 
@@ -29,6 +30,30 @@ pub struct UpstreamIdentity {
     pub login_hint: Option<String>,
     /// GitHub orgs, when the provider restricts by org.
     pub orgs: Option<Vec<String>>,
+    /// `actor_type` as the provider states it: AgentID says `agent`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor_type: Option<String>,
+    /// The person responsible for an agent, as AgentID reports them. Display only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<Owner>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Owner {
+    pub subject: Option<String>,
+    pub name: Option<String>,
+    pub email: Option<String>,
+}
+
+/// AgentID (https://www.agentid.com): hosted OIDC for autonomous agents, by AgentMail.
+pub const AGENTID_ISSUER: &str = "https://auth.agentid.com";
+
+/// What Handstamp asks AgentID for: the agent, and who owns it (registered clients only).
+pub fn agentid_scopes() -> Vec<String> {
+    ["openid", "email", "profile", "owner_profile", "owner_email"]
+        .map(String::from)
+        .to_vec()
 }
 
 #[derive(Clone, Debug)]
@@ -50,11 +75,25 @@ pub struct Provider {
 }
 
 impl Provider {
+    pub fn is_agentid(&self) -> bool {
+        self.kind == "agentid"
+    }
+
+    /// Accounts made through AgentID are agents; every other provider makes people.
+    pub fn account_kind(&self) -> &'static str {
+        if self.is_agentid() { "agent" } else { "person" }
+    }
+
+    /// AgentID only signs agents in; anything else it says is refused rather than guessed.
+    pub fn refuses(&self, identity: &UpstreamIdentity) -> Option<&'static str> {
+        (self.is_agentid() && identity.actor_type.as_deref() != Some("agent")).then_some("not_an_agent")
+    }
+
     /// GitHub and Google only report emails they verified. A generic issuer's email_verified is
     /// only believed when the operator says so (S13).
     pub fn trusted_email(&self, identity: &UpstreamIdentity) -> Option<String> {
         let email = identity.email.as_ref().filter(|_| identity.email_verified)?;
-        if self.kind == "oidc" && !self.trust_email_verified {
+        if matches!(self.kind.as_str(), "oidc" | "agentid") && !self.trust_email_verified {
             return None;
         }
         Some(email.to_lowercase())
@@ -197,6 +236,38 @@ pub fn from_env(env: &HashMap<String, String>) -> Result<Vec<Seed>> {
             allowed_email_domains: list(env.get(&format!("{google}ALLOWED_DOMAINS"))),
             github_allowed_orgs: vec![],
             trust_email_verified: true,
+        });
+    }
+    let agentid = "HANDSTAMP_UPSTREAM_AGENTID_";
+    if let Some(client_id) = get(&format!("{agentid}CLIENT_ID")) {
+        // The issuer is AgentID's. Overriding it is for tests against a local mock only.
+        let issuer = match get(&format!("{agentid}ISSUER")) {
+            Some(issuer) if issuer.trim_end_matches('/') != AGENTID_ISSUER => {
+                let local = Url::parse(issuer)
+                    .ok()
+                    .is_some_and(|u| matches!(u.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")));
+                if !local {
+                    bail!("HANDSTAMP_UPSTREAM_AGENTID_ISSUER may only point at a local test issuer");
+                }
+                issuer.trim_end_matches('/').to_string()
+            }
+            _ => AGENTID_ISSUER.into(),
+        };
+        seeds.push(Seed {
+            slug: "agentid".into(),
+            kind: "agentid".into(),
+            display_name: get(&format!("{agentid}NAME"))
+                .cloned()
+                .unwrap_or_else(|| "AgentID".into()),
+            issuer,
+            api_url: None,
+            client_id: client_id.clone(),
+            client_secret: get(&format!("{agentid}CLIENT_SECRET")).cloned(),
+            scopes: agentid_scopes(),
+            allow_signup: yes(env.get(&format!("{agentid}ALLOW_SIGNUP"))),
+            allowed_email_domains: vec![],
+            github_allowed_orgs: vec![],
+            trust_email_verified: false,
         });
     }
     let pattern = regex::Regex::new(r"^HANDSTAMP_UPSTREAM_OIDC_([A-Z0-9_]+)_ISSUER$").unwrap();
@@ -579,7 +650,41 @@ mod tests {
             name: None,
             login_hint: None,
             orgs: None,
+            actor_type: None,
+            owner: None,
         }
+    }
+
+    #[test]
+    fn seeds_agentid_at_its_own_issuer() {
+        let seeds = from_env(&env(&[
+            ("HANDSTAMP_UPSTREAM_AGENTID_CLIENT_ID", "a"),
+            ("HANDSTAMP_UPSTREAM_AGENTID_CLIENT_SECRET", "s"),
+        ]))
+        .unwrap();
+        assert_eq!(seeds[0].kind, "agentid");
+        assert_eq!(seeds[0].issuer, AGENTID_ISSUER);
+        assert_eq!(seeds[0].scopes, agentid_scopes());
+        assert!(!seeds[0].allow_signup);
+        let elsewhere = from_env(&env(&[
+            ("HANDSTAMP_UPSTREAM_AGENTID_CLIENT_ID", "a"),
+            ("HANDSTAMP_UPSTREAM_AGENTID_CLIENT_SECRET", "s"),
+            ("HANDSTAMP_UPSTREAM_AGENTID_ISSUER", "https://evil.example"),
+        ]));
+        assert!(elsewhere.is_err());
+    }
+
+    #[test]
+    fn agentid_signs_in_agents_only() {
+        let agentid = provider("agentid");
+        let mut who = identity("bot@agentid.example", true);
+        assert_eq!(agentid.refuses(&who), Some("not_an_agent"));
+        who.actor_type = Some("agent".into());
+        assert_eq!(agentid.refuses(&who), None);
+        assert_eq!(agentid.account_kind(), "agent");
+        assert_eq!(agentid.trusted_email(&who), None);
+        assert_eq!(provider("google").refuses(&identity("a@x.example", true)), None);
+        assert_eq!(provider("google").account_kind(), "person");
     }
 
     #[test]

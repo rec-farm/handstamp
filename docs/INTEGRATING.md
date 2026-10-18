@@ -88,6 +88,7 @@ with whatever other sign-in it has.
 | `amr`                                      | ID token           | `openid`  | `["pop","user","mfa"]` when the person signed in with a passkey. Absent for GitHub/Google/OIDC sign-ins.            |
 | `sid`                                      | ID token           | `openid`  | The Handstamp session, to match back-channel logouts. Sent to apps with a back-channel logout URI.                  |
 | `auth_time`                                | ID token           | `openid`  | When the person last authenticated. Always sent.                                                                    |
+| `actor_type`                               | userinfo           | `openid`  | `person`, or `agent`: see [Agent accounts](#agent-accounts). Also in introspection; in the ID token on request.     |
 | `groups`                                   | ID token, userinfo | `groups`  | Group slugs, e.g. `["paramtune-admins"]`. Always an array.                                                          |
 | `name`, `preferred_username`, `updated_at` | userinfo           | `profile` | Display name and handle.                                                                                            |
 | `email`, `email_verified`                  | userinfo           | `email`   | See rule 5.                                                                                                         |
@@ -116,6 +117,35 @@ done. Add `max_age=0` to make someone sign in again even when they already have 
 Refresh tokens: an app allowed `offline_access` gets one with every sign-in. It rotates on every
 use (reusing an old one revokes the whole grant) and ends when the person signs out of Handstamp,
 is turned off, or the app is.
+
+## Agent accounts
+
+Handstamp can give autonomous agents their own accounts through
+[AgentID](https://www.agentid.com), an OpenID Connect provider for agents. An agent account is a
+member like any other: apps see its own `sub`, it joins groups, and people invite it into their
+projects. Apps tell it apart by `actor_type: "agent"` (a person is `"person"`); show it, and record
+it in audit logs. It's in userinfo and token introspection; to have it in the ID token too, ask
+for it with the `claims` parameter (`{"id_token":{"actor_type":null}}`).
+
+- **Turning it on.** Register Handstamp as a client at AgentID (registered clients get the owner
+  claims) with the callback `https://<handstamp>/upstream/agentid/callback`, then set
+  `HANDSTAMP_UPSTREAM_AGENTID_CLIENT_ID` and `_CLIENT_SECRET`, or add an AgentID provider in the
+  console. The issuer is always `https://auth.agentid.com`; Handstamp asks for
+  `openid email profile owner_profile owner_email`.
+- **Onboarding is by invite.** Anyone can create an agent, so sign-up stays off by default
+  (`HANDSTAMP_UPSTREAM_AGENTID_ALLOW_SIGNUP`). An admin creates an invite link and the agent opens
+  it in its browser and continues with AgentID. AgentID only signs in identities it marks
+  `actor_type: "agent"`; anything else is refused. Agent identities can't be linked to a person's
+  account, nor a person's to an agent's.
+- **Who owns it.** AgentID reports the person responsible for the agent (`owner_sub`,
+  `owner_name`, `owner_email`). The console shows them under the agent's linked accounts. They are
+  for display only: Handstamp never finds, links or merges accounts by them, nor by the agent's
+  email, which it doesn't vouch for.
+- **Short sessions.** AgentID has no refresh tokens or revocation webhook, so an agent's
+  Handstamp sessions and app grants last at most `AGENT_SESSION_HOURS` (default 24). Revoking the
+  agent at AgentID takes effect here within that time; signing in again is silent while AgentID
+  remembers the approval.
+- **No passkeys.** Agents have none, so a request with `acr_values=phr` refuses them, as intended.
 
 ## Signing out
 

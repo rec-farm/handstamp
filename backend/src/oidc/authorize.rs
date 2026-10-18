@@ -231,7 +231,7 @@ async fn resume_inner(
         session.account_id = Some(login.account_id.clone());
         session.login_ts = Some(login.ts);
         session.amr = login.amr.clone();
-        session.exp = now() + app.session_ttl();
+        session.exp = now() + app.account_session_ttl(&login.account_id).await?;
         session.touched = true;
         if !session.new {
             session.reset_identifier();
@@ -564,13 +564,13 @@ async fn proceed(
             None => None,
         };
         let mut saved = existing.is_some();
-        let mut g =
-            existing.unwrap_or_else(|| Grant::new(&account.id.to_string(), &client.client_id, app.session_ttl()));
+        let ttl = app.session_ttl_for(&account.kind);
+        let mut g = existing.unwrap_or_else(|| Grant::new(&account.id.to_string(), &client.client_id, ttl));
         if client.first_party {
             g.add_scopes(ctx.oidc_scopes());
             let names = requested.names();
             g.add_claims(names.iter().map(String::as_str));
-            g.exp = now() + app.session_ttl();
+            g.exp = now() + ttl;
             save_grant(app, &g).await?;
             saved = true;
         }

@@ -73,6 +73,8 @@ const LINK_ERRORS: Record<string, string> = {
   identity_taken:
     'That account is already connected to a different Handstamp account, so we did not link it.',
   link_expired: 'That took too long, or you signed out meanwhile. Try linking again.',
+  not_an_agent: 'AgentID is for agents, so it was not linked.',
+  account_kind: 'Agents and people keep separate accounts, so it was not linked.',
   upstream_cancelled: 'Linking was cancelled.',
   upstream_failed: "We couldn't finish linking with that provider. Try again.",
   provider_unavailable: 'That sign-in option is no longer available.',

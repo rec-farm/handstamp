@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Globe, Plus } from 'lucide-react';
+import { Bot, Globe, Plus } from 'lucide-react';
 import {
   CopyButton,
   Empty,
@@ -24,7 +24,7 @@ import { AdminPage, type Console } from './AdminPage.tsx';
 
 type Provider = {
   slug: string;
-  kind: 'github' | 'google' | 'oidc';
+  kind: 'github' | 'google' | 'oidc' | 'agentid';
   displayName: string;
   issuer: string;
   apiUrl: string | null;
@@ -37,11 +37,12 @@ type Provider = {
   source: 'env' | 'db';
 };
 
-const KIND = { github: 'GitHub', google: 'Google', oidc: 'OIDC' };
+const KIND = { github: 'GitHub', google: 'Google', oidc: 'OIDC', agentid: 'AgentID' };
 const KIND_ICON = {
   github: (cls: string) => <GitHubMark className={cls} />,
   google: (cls: string) => <GoogleMark className={cls} />,
   oidc: (cls: string) => <Globe className={cls} aria-hidden />,
+  agentid: (cls: string) => <Bot className={cls} aria-hidden />,
 };
 const KINDS: Choice<Provider['kind']>[] = [
   {
@@ -62,9 +63,15 @@ const KINDS: Choice<Provider['kind']>[] = [
     hint: 'Okta, Entra ID, Keycloak or any issuer.',
     icon: KIND_ICON.oidc('size-5'),
   },
+  {
+    value: 'agentid',
+    label: 'AgentID',
+    hint: 'Accounts for AI agents, each with an owner.',
+    icon: KIND_ICON.agentid('size-5'),
+  },
 ];
 // The button label we fill in for each kind, so switching kinds doesn't keep a stale one.
-const DEFAULT_LABEL = { github: 'GitHub', google: 'Google', oidc: '' };
+const DEFAULT_LABEL = { github: 'GitHub', google: 'Google', oidc: '', agentid: 'AgentID' };
 
 const list = (s: string) =>
   s
@@ -169,7 +176,7 @@ function ProviderForm({
             )}
           </Field>
         </div>
-        {v.kind !== 'google' && (
+        {v.kind !== 'google' && v.kind !== 'agentid' && (
           <Field
             label={v.kind === 'github' ? 'GitHub URL' : 'Issuer'}
             required={v.kind === 'oidc'}
@@ -237,24 +244,35 @@ function ProviderForm({
       </Section>
 
       <Section label="Who can sign up" subtitle="Who this provider lets in.">
-        <Check
-          checked={v.allowSignup}
-          onChange={(allowSignup) => set({ allowSignup })}
-          label="New people may create an account with it"
-          hint="Off: only people who already have an account (or an invite) can use it."
-        />
+        {v.kind === 'agentid' ? (
+          <Check
+            checked={v.allowSignup}
+            onChange={(allowSignup) => set({ allowSignup })}
+            label="Any agent may create an account with it"
+            hint="Off: only agents you invite can use it. Recommended: anyone can make an agent."
+          />
+        ) : (
+          <Check
+            checked={v.allowSignup}
+            onChange={(allowSignup) => set({ allowSignup })}
+            label="New people may create an account with it"
+            hint="Off: only people who already have an account (or an invite) can use it."
+          />
+        )}
         <div className="grid gap-6 sm:grid-cols-2">
-          <Field label="Only these email domains" hint="Comma-separated. Empty: any.">
-            {(id) => (
-              <input
-                id={id}
-                className="input font-mono"
-                value={v.domains}
-                onChange={(e) => set({ domains: e.target.value })}
-                placeholder="example.com"
-              />
-            )}
-          </Field>
+          {v.kind !== 'agentid' && (
+            <Field label="Only these email domains" hint="Comma-separated. Empty: any.">
+              {(id) => (
+                <input
+                  id={id}
+                  className="input font-mono"
+                  value={v.domains}
+                  onChange={(e) => set({ domains: e.target.value })}
+                  placeholder="example.com"
+                />
+              )}
+            </Field>
+          )}
           {v.kind === 'github' && (
             <Field label="Only these GitHub orgs" hint="Comma-separated. Empty: any.">
               {(id) => (
