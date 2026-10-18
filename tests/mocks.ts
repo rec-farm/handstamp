@@ -1,17 +1,66 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import Provider from 'oidc-provider';
 
-export type MockAccount = { sub: string; email?: string; email_verified?: boolean; name?: string };
+export type MockAccount = {
+  sub: string;
+  email?: string;
+  email_verified?: boolean;
+  name?: string;
+  // AgentID's claims.
+  actor_type?: string;
+  owner_sub?: string;
+  owner_name?: string;
+  owner_email?: string;
+};
 
 // A real OIDC issuer (oidc-provider) that signs in whichever account the test picks, with no UI.
-export async function mockOidcIssuer(port: number, redirectUri: string, secret: string) {
+// `agentid` makes it behave like AgentID: ES256-only ID tokens, actor_type and owner claims.
+export async function mockOidcIssuer(
+  port: number,
+  redirectUri: string,
+  secret: string,
+  { agentid = false }: { agentid?: boolean } = {},
+) {
   const accounts = new Map<string, MockAccount>();
   const state = { next: '' };
   const issuer = `http://127.0.0.1:${port}`;
+  const es256 = agentid
+    ? {
+        jwks: {
+          keys: [
+            {
+              ...generateKeyPairSync('ec', { namedCurve: 'P-256' }).privateKey.export({
+                format: 'jwk',
+              }),
+              alg: 'ES256',
+              use: 'sig',
+              kid: 'agentid-test',
+            },
+          ],
+        },
+        enabledJWA: { idTokenSigningAlgValues: ['ES256' as const] },
+      }
+    : {};
+  const scope = agentid ? 'openid email profile owner_profile owner_email' : 'openid email profile';
   const provider = new Provider(issuer, {
-    clients: [{ client_id: 'handstamp', client_secret: secret, redirect_uris: [redirectUri] }],
-    claims: { openid: ['sub'], email: ['email', 'email_verified'], profile: ['name'] },
+    ...es256,
+    clients: [
+      {
+        client_id: 'handstamp',
+        client_secret: secret,
+        redirect_uris: [redirectUri],
+        ...(agentid ? { id_token_signed_response_alg: 'ES256' } : {}),
+      },
+    ],
+    claims: {
+      openid: agentid ? ['sub', 'actor_type'] : ['sub'],
+      email: ['email', 'email_verified'],
+      profile: ['name'],
+      ...(agentid
+        ? { owner_profile: ['owner_sub', 'owner_name'], owner_email: ['owner_email'] }
+        : {}),
+    },
     findAccount: (_ctx, sub) => {
       const account = accounts.get(sub);
       return account ? { accountId: sub, claims: () => account } : undefined;
@@ -30,7 +79,7 @@ export async function mockOidcIssuer(port: number, redirectUri: string, secret: 
       accountId: details.session!.accountId,
       clientId: details.params.client_id as string,
     });
-    grant.addOIDCScope('openid email profile');
+    grant.addOIDCScope(scope);
     return provider.interactionFinished(
       ctx.req,
       ctx.res,

@@ -167,6 +167,31 @@ impl App {
         (self.config.session_max_days * 24 * 3600) as i64
     }
 
+    /// How long a session or grant of this kind of account lasts: agents get at most
+    /// AGENT_SESSION_HOURS.
+    pub fn session_ttl_for(&self, kind: &str) -> i64 {
+        if crate::accounts::is_agent(kind) {
+            self.session_ttl().min((self.config.agent_session_hours * 3600) as i64)
+        } else {
+            self.session_ttl()
+        }
+    }
+
+    /// `session_ttl_for` the account with this `sub`.
+    pub async fn account_session_ttl(&self, account_id: &str) -> Result<i64> {
+        let Ok(id) = uuid::Uuid::parse_str(account_id) else {
+            return Ok(self.session_ttl());
+        };
+        let kind: Option<String> = self
+            .pool
+            .get()
+            .await?
+            .query_opt("SELECT kind FROM users WHERE id = $1", &[&id])
+            .await?
+            .map(|r| r.get(0));
+        Ok(self.session_ttl_for(kind.as_deref().unwrap_or("person")))
+    }
+
     /// The current SSO session, or a fresh unsaved one.
     pub async fn load_session(&self, req: &Req) -> Result<Session> {
         if let Some(id) = req.cookie(self.cookie_names().session)
@@ -384,6 +409,11 @@ pub async fn id_token(app: &App, input: IdTokenInput<'_>) -> Result<String> {
         input.grant_claims,
     )
     .await?;
+    // `actor_type` is in userinfo; the ID token carries it only when the claims parameter asks,
+    // so the token holds no claims nobody requested (conformance: EnsureIdTokenDoesNotContainNonRequestedClaims).
+    if !input.requested.id_token.contains_key("actor_type") {
+        claims.remove("actor_type");
+    }
     let iat = now();
     if let Some(amr) = input.amr.filter(|a| !a.is_empty()) {
         claims.insert("amr".into(), json!(amr));

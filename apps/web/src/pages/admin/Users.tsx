@@ -26,6 +26,7 @@ type UserRow = {
   createdAt: string;
   lastSignInAt: string | null;
   methods: number;
+  kind: 'person' | 'agent';
 };
 type Invite = { id: string; createdAt: string; expiresAt: string; createdBy: string | null };
 
@@ -113,6 +114,7 @@ function UsersBody({ c }: { c: Console }) {
                 <span className="flex items-center gap-2">
                   <RowLink to={`/admin/users/${u.id}`}>{u.displayName}</RowLink>
                   {u.isAdmin && <Tag tone="info">Admin</Tag>}
+                  {u.kind === 'agent' && <Tag>Agent</Tag>}
                 </span>
               </Cell>
               <Cell muted>{u.email ?? '—'}</Cell>

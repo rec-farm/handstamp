@@ -93,6 +93,8 @@ pub struct User {
     pub email: Option<String>,
     pub email_verified: bool,
     pub is_admin: bool,
+    /// `person` or `agent`.
+    pub kind: String,
     pub preferred_username: Option<String>,
     pub webauthn_user_handle: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -130,7 +132,7 @@ impl App {
         let db = self.pool.get().await?;
         let row = db
             .query_opt(
-                "SELECT id, display_name, email::text, email_verified, is_admin, preferred_username::text, webauthn_user_handle, created_at \
+                "SELECT id, display_name, email::text, email_verified, is_admin, preferred_username::text, webauthn_user_handle, created_at, kind \
                  FROM users WHERE id = $1 AND status = 'active'",
                 &[&id],
             )
@@ -146,6 +148,7 @@ impl App {
                 preferred_username: r.get(5),
                 webauthn_user_handle: r.get(6),
                 created_at: r.get(7),
+                kind: r.get(8),
             },
         }))
     }
@@ -352,6 +355,7 @@ async fn me(State(app): State<App>, req: Req) -> Response {
                         "email": user.email,
                         "emailVerified": user.email_verified,
                         "isAdmin": user.is_admin,
+                        "kind": user.kind,
                         "createdAt": iso(user.created_at),
                     },
                     "session": {

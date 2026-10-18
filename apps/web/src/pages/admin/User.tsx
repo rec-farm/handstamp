@@ -24,6 +24,7 @@ type Detail = {
     status: 'active' | 'disabled';
     createdAt: string;
     lastSignInAt: string | null;
+    kind: 'person' | 'agent';
   };
   passkeys: {
     id: string;
@@ -38,6 +39,7 @@ type Detail = {
     loginHint: string | null;
     email: string | null;
     linkedAt: string;
+    owner: { subject: string | null; name: string | null; email: string | null } | null;
   }[];
   groups: { id: string; slug: string; name: string }[];
   sessions: { uid: string; signedInAt: string | null; method: string; apps: { name: string }[] }[];
@@ -81,13 +83,14 @@ function UserBody({ c, id }: { c: Console; id: string }) {
   return (
     <>
       <PageHeader
-        eyebrow={user.isAdmin ? 'Admin' : 'Person'}
+        eyebrow={user.isAdmin ? 'Admin' : user.kind === 'agent' ? 'Agent' : 'Person'}
         title={user.displayName}
         name
         subtitle={
           <span className="flex flex-wrap items-center gap-3">
             <Status ok={user.status === 'active'} yes="Active" no="Turned off" />
             {user.isAdmin && <Tag tone="info">Admin</Tag>}
+            {user.kind === 'agent' && <Tag>Agent</Tag>}
             {self && <Tag>You</Tag>}
           </span>
         }
@@ -362,6 +365,25 @@ function UserBody({ c, id }: { c: Console; id: string }) {
                   <code className="font-mono text-mono-sm text-fg-muted">
                     {i.loginHint ?? i.email}
                   </code>
+                  {i.owner && (
+                    <span className="mt-0.5 block text-body-sm text-fg-muted">
+                      Owned by {i.owner.name ?? i.owner.email ?? 'someone'}
+                      {i.owner.name && i.owner.email && (
+                        <>
+                          {' '}
+                          <code className="font-mono text-mono-sm">{i.owner.email}</code>
+                        </>
+                      )}
+                      {i.owner.subject && (
+                        <>
+                          {' · '}
+                          <code className="font-mono text-mono-sm break-all">
+                            {i.owner.subject}
+                          </code>
+                        </>
+                      )}
+                    </span>
+                  )}
                 </span>
                 <Button
                   size="md"

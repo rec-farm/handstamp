@@ -23,7 +23,7 @@ use crate::{
     audit::{Actor, Entry},
     enrollment,
     http::{ApiError, Limit, Out, Req},
-    identities::IdentityTaken,
+    identities::{IdentityTaken, KindMismatch},
     interaction::{ENROLL_COOKIE, EnrollState, complete_sign_in, record_refusal},
     oidc::{models::Interaction, store::INTERACTION},
 };
@@ -174,6 +174,12 @@ async fn callback_inner(app: &App, slug: &str, req: &Req) -> Result<Response, Ap
             return Ok(fail(error.code));
         }
     };
+    // Signing in is refused in `complete`, where the refusal is recorded against the app.
+    if pending.purpose == "link"
+        && let Some(reason) = provider.refuses(&identity)
+    {
+        return Ok(fail(reason));
+    }
 
     if pending.purpose == "link" {
         // Linking needs the same signed-in console session that started it (S14).
@@ -191,15 +197,19 @@ async fn callback_inner(app: &App, slug: &str, req: &Req) -> Result<Response, Ap
         };
         let user = Uuid::parse_str(&session.sub).map_err(|_| ApiError::server())?;
         if let Err(error) = app.identities.link(user, &provider, &identity).await {
-            if !error.is::<IdentityTaken>() {
+            let reason = if error.is::<IdentityTaken>() {
+                "identity_taken"
+            } else if error.is::<KindMismatch>() {
+                "account_kind"
+            } else {
                 return Err(error.into());
-            }
+            };
             Entry::new("identity.link_refused", Actor::User)
                 .by(Some(user))
-                .meta(json!({ "provider": provider.slug, "reason": "identity_taken" }))
+                .meta(json!({ "provider": provider.slug, "reason": reason }))
                 .write(&app.pool.get().await?)
                 .await?;
-            return Ok(fail("identity_taken"));
+            return Ok(fail(reason));
         }
         Entry::new("identity.linked", Actor::User)
             .by(Some(user))
@@ -252,6 +262,9 @@ async fn complete_inner(app: &App, path_uid: &str, req: &Req) -> Result<Response
             return Ok(see_other(&back(&uid, $reason), cookies));
         }};
     }
+    if let Some(reason) = provider.refuses(&identity) {
+        refuse!(reason, None);
+    }
 
     let enroll: Option<EnrollState> = app.read_sealed(req, ENROLL_COOKIE);
     let enrollment = match enroll {
@@ -300,6 +313,9 @@ async fn complete_inner(app: &App, path_uid: &str, req: &Req) -> Result<Response
         if let Err(error) = app.identities.link(user, &provider, &identity).await {
             if error.is::<IdentityTaken>() {
                 refuse!("identity_taken", None);
+            }
+            if error.is::<KindMismatch>() {
+                refuse!("account_kind", Some(user));
             }
             return Err(error.into());
         }

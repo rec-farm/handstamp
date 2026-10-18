@@ -24,7 +24,7 @@ use crate::{
     enrollment::{INVITE_DAYS, RECOVERY_MINUTES},
     http::{ApiError, ApiResult, Out, Req},
     passkeys::LastMethod,
-    upstream::providers::{ReadOnly as ReadOnlyProvider, Seed, upstream_url_problem},
+    upstream::providers::{AGENTID_ISSUER, ReadOnly as ReadOnlyProvider, Seed, agentid_scopes, upstream_url_problem},
 };
 
 static EMAIL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").unwrap());
@@ -195,8 +195,8 @@ pub fn parse_provider(body: &Value) -> Result<Seed, ApiError> {
         return Err(invalid("slug", "Use lowercase letters, digits and dashes."));
     }
     let kind = body.get("kind").and_then(Value::as_str).unwrap_or_default().to_string();
-    if !["github", "google", "oidc"].contains(&kind.as_str()) {
-        return Err(invalid("kind", "Use github, google or oidc."));
+    if !["github", "google", "oidc", "agentid"].contains(&kind.as_str()) {
+        return Err(invalid("kind", "Use github, google, oidc or agentid."));
     }
     let display_name = trimmed(body, "displayName")?.unwrap_or_default();
     if display_name.is_empty() || display_name.chars().count() > 40 {
@@ -228,6 +228,8 @@ pub fn parse_provider(body: &Value) -> Result<Seed, ApiError> {
 
     let issuer = if kind == "google" {
         "https://accounts.google.com".to_string()
+    } else if kind == "agentid" {
+        AGENTID_ISSUER.to_string()
     } else {
         let raw = if issuer_in.is_empty() && kind == "github" {
             "https://github.com".to_string()
@@ -247,6 +249,8 @@ pub fn parse_provider(body: &Value) -> Result<Seed, ApiError> {
     });
     let scopes = if kind == "github" {
         vec![]
+    } else if kind == "agentid" {
+        agentid_scopes()
     } else if scopes.is_empty() {
         vec!["openid".into(), "email".into(), "profile".into()]
     } else {
@@ -260,8 +264,18 @@ pub fn parse_provider(body: &Value) -> Result<Seed, ApiError> {
     {
         return Err(invalid("apiUrl", format!("The API URL {problem}.")));
     }
+    // Agents have no organisation's email domain to restrict by, and their address isn't vouched for.
+    let allowed_email_domains = if kind == "agentid" {
+        vec![]
+    } else {
+        allowed_email_domains
+    };
     Ok(Seed {
-        trust_email_verified: if kind == "oidc" { trust } else { true },
+        trust_email_verified: match kind.as_str() {
+            "oidc" => trust,
+            "agentid" => false,
+            _ => true,
+        },
         slug,
         kind,
         display_name,
@@ -397,7 +411,8 @@ async fn users(State(app): State<App>, req: Req) -> Response {
         let rows = db
             .query(
                 "SELECT u.id, u.display_name, u.email::text, u.is_admin, u.status, u.created_at, u.last_sign_in_at, \
-                   (SELECT count(*) FROM passkeys p WHERE p.user_id = u.id) + (SELECT count(*) FROM identities i WHERE i.user_id = u.id) \
+                   (SELECT count(*) FROM passkeys p WHERE p.user_id = u.id) + (SELECT count(*) FROM identities i WHERE i.user_id = u.id), \
+                   u.kind \
                  FROM users u \
                  WHERE $1::text IS NULL OR u.display_name ILIKE $2 OR u.email::text ILIKE $2 OR u.id::text = $1 \
                  ORDER BY u.display_name LIMIT 500",
@@ -416,6 +431,7 @@ async fn users(State(app): State<App>, req: Req) -> Response {
                     "createdAt": iso(r.get(5)),
                     "lastSignInAt": iso_opt(r.get(6)),
                     "methods": r.get::<_, i64>(7),
+                    "kind": r.get::<_, String>(8),
                 })
             })
             .collect();
@@ -431,7 +447,7 @@ async fn user(State(app): State<App>, Path(raw): Path<String>, req: Req) -> Resp
         let db = app.pool.get().await?;
         let Some(r) = db
             .query_opt(
-                "SELECT id, display_name, email::text, email_verified, is_admin, status, created_at, last_sign_in_at FROM users WHERE id = $1",
+                "SELECT id, display_name, email::text, email_verified, is_admin, status, created_at, last_sign_in_at, kind FROM users WHERE id = $1",
                 &[&user_id],
             )
             .await?
@@ -461,6 +477,7 @@ async fn user(State(app): State<App>, Path(raw): Path<String>, req: Req) -> Resp
                 "status": r.get::<_, String>(5),
                 "createdAt": iso(r.get(6)),
                 "lastSignInAt": iso_opt(r.get(7)),
+                "kind": r.get::<_, String>(8),
             },
             "passkeys": passkeys,
             "identities": identities,
@@ -1497,6 +1514,15 @@ mod tests {
         .unwrap();
         assert!(!oidc.trust_email_verified);
         assert_eq!(oidc.scopes, ["openid", "email", "profile"]);
+        let agents = parse_provider(&json!({
+            "slug": "agents", "kind": "agentid", "displayName": "AgentID", "clientId": "x",
+            "issuer": "https://evil.example", "scopes": ["openid"], "trustEmailVerified": true,
+            "allowedEmailDomains": ["corp.example"]
+        }))
+        .unwrap();
+        assert_eq!(agents.issuer, AGENTID_ISSUER);
+        assert_eq!(agents.scopes, agentid_scopes());
+        assert!(!agents.trust_email_verified && agents.allowed_email_domains.is_empty());
     }
 
     #[test]

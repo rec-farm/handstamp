@@ -17,6 +17,11 @@ use crate::{
 #[error("this identity belongs to another account")]
 pub struct IdentityTaken;
 
+/// An agent's identity can't be added to a person's account, nor a person's to an agent's.
+#[derive(Debug, thiserror::Error)]
+#[error("this identity is for a different kind of account")]
+pub struct KindMismatch;
+
 pub struct Linked {
     pub id: Uuid,
     pub user_id: Uuid,
@@ -50,7 +55,8 @@ impl Identities {
         let db = self.pool.get().await?;
         Ok(db
             .query(
-                "SELECT i.id, p.slug, p.display_name, i.login_hint, i.email::text, i.linked_at, i.last_used_at \
+                "SELECT i.id, p.slug, p.display_name, i.login_hint, i.email::text, i.linked_at, i.last_used_at, \
+                   i.owner_subject, i.owner_name, i.owner_email \
                  FROM identities i JOIN upstream_providers p ON p.id = i.provider_id \
                  WHERE i.user_id = $1 ORDER BY i.linked_at",
                 &[&user],
@@ -66,6 +72,7 @@ impl Identities {
                     "email": r.get::<_, Option<String>>(4),
                     "linkedAt": iso(r.get(5)),
                     "lastUsedAt": iso_opt(r.get(6)),
+                    "owner": owner_json(r.get(7), r.get(8), r.get(9)),
                 })
             })
             .collect())
@@ -73,9 +80,19 @@ impl Identities {
 
     pub async fn touch(&self, id: Uuid, identity: &UpstreamIdentity) -> Result<()> {
         let db = self.pool.get().await?;
+        let owner = identity.owner.clone().unwrap_or_default();
         db.execute(
-            "UPDATE identities SET last_used_at = now(), email = $2, email_verified = $3, login_hint = $4 WHERE id = $1",
-            &[&id, &identity.email, &identity.email_verified, &identity.login_hint],
+            "UPDATE identities SET last_used_at = now(), email = $2, email_verified = $3, login_hint = $4, \
+               owner_subject = $5, owner_name = $6, owner_email = $7 WHERE id = $1",
+            &[
+                &id,
+                &identity.email,
+                &identity.email_verified,
+                &identity.login_hint,
+                &owner.subject,
+                &owner.name,
+                &owner.email,
+            ],
         )
         .await?;
         Ok(())
@@ -135,8 +152,8 @@ impl Identities {
         let kept = if holder.is_some() { None } else { email.clone() };
         let user: Uuid = tx
             .query_one(
-                "INSERT INTO users (display_name, email, email_verified) VALUES ($1, $2, $3) RETURNING id",
-                &[&display_name, &kept, &kept.is_some()],
+                "INSERT INTO users (display_name, email, email_verified, kind) VALUES ($1, $2, $3, $4) RETURNING id",
+                &[&display_name, &kept, &kept.is_some(), &provider.account_kind()],
             )
             .await?
             .get(0);
@@ -151,7 +168,7 @@ impl Identities {
         Entry::new("user.created", Actor::User)
             .by(Some(user))
             .target("user", user)
-            .meta(json!({ "via": via, "provider": provider.slug }))
+            .meta(json!({ "via": via, "provider": provider.slug, "kind": provider.account_kind() }))
             .write(&tx)
             .await?;
         if let Some(holder) = holder {
@@ -188,10 +205,19 @@ pub async fn link(
         }
         return Ok(existing.get(0));
     }
+    let kind: Option<String> = db
+        .query_opt("SELECT kind FROM users WHERE id = $1", &[&user])
+        .await?
+        .map(|r| r.get(0));
+    if kind.is_some_and(|k| k != provider.account_kind()) {
+        return Err(KindMismatch.into());
+    }
+    let owner = identity.owner.clone().unwrap_or_default();
     let row = db
         .query_opt(
-            "INSERT INTO identities (user_id, provider_id, issuer, subject, email, email_verified, login_hint, last_used_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, now()) ON CONFLICT DO NOTHING RETURNING id",
+            "INSERT INTO identities (user_id, provider_id, issuer, subject, email, email_verified, login_hint, last_used_at, \
+               owner_subject, owner_name, owner_email) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, now(), $8, $9, $10) ON CONFLICT DO NOTHING RETURNING id",
             &[
                 &user,
                 &provider.id,
@@ -200,9 +226,20 @@ pub async fn link(
                 &identity.email,
                 &identity.email_verified,
                 &identity.login_hint,
+                &owner.subject,
+                &owner.name,
+                &owner.email,
             ],
         )
         .await?;
     // Lost a race to another account.
     row.map(|r| r.get(0)).ok_or_else(|| IdentityTaken.into())
+}
+
+/// An agent's owner for display, or null.
+fn owner_json(subject: Option<String>, name: Option<String>, email: Option<String>) -> Value {
+    if subject.is_none() && name.is_none() && email.is_none() {
+        return Value::Null;
+    }
+    json!({ "subject": subject, "name": name, "email": email })
 }

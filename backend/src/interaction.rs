@@ -371,6 +371,7 @@ async fn consent(State(app): State<App>, Path(uid): Path<String>, req: Req) -> R
                     "There is nothing to approve. Reload the page to continue.",
                 ));
             };
+            let ttl = app.account_session_ttl(&account).await?;
             let mut grant = match &interaction.grant_id {
                 Some(id) => app
                     .store
@@ -384,7 +385,7 @@ async fn consent(State(app): State<App>, Path(uid): Path<String>, req: Req) -> R
                             "This request expired. Go back to the app and start again.",
                         )
                     })?,
-                None => Grant::new(&account, interaction.client_id(), app.session_ttl()),
+                None => Grant::new(&account, interaction.client_id(), ttl),
             };
             let details = &interaction.prompt.details;
             let strings = |key: &str| -> Vec<String> {
@@ -397,7 +398,7 @@ async fn consent(State(app): State<App>, Path(uid): Path<String>, req: Req) -> R
             let scopes = strings("missingOIDCScope");
             grant.add_scopes(scopes.iter().map(String::as_str));
             grant.add_claims(strings("missingOIDCClaims").iter().map(String::as_str));
-            grant.exp = now() + app.session_ttl();
+            grant.exp = now() + ttl;
             save_grant(&app, &grant).await?;
             let consent = ConsentResult {
                 grant_id: interaction.grant_id.is_none().then(|| grant.jti.clone()),

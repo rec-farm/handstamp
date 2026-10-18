@@ -10,9 +10,11 @@ use uuid::Uuid;
 
 /// Which claims each scope releases (DESIGN D6). `groups` and `amr` ride under openid so they can
 /// appear in the ID token; `groups` is only produced when the groups scope was granted.
+/// `actor_type` (`person` or `agent`) rides under openid too, so every app can tell agents apart
+/// from userinfo; the ID token has it only when the claims parameter asks (`id_token`).
 pub fn scope_claims(scope: &str) -> &'static [&'static str] {
     match scope {
-        "openid" => &["sub", "groups", "amr"],
+        "openid" => &["sub", "groups", "amr", "actor_type"],
         "profile" => &["name", "preferred_username", "updated_at"],
         "email" => &["email", "email_verified"],
         "groups" => &["groups"],
@@ -21,9 +23,10 @@ pub fn scope_claims(scope: &str) -> &'static [&'static str] {
 }
 
 /// Every claim discovery advertises.
-pub const CLAIMS_SUPPORTED: [&str; 12] = [
+pub const CLAIMS_SUPPORTED: [&str; 13] = [
     "sub",
     "groups",
+    "actor_type",
     "acr",
     "amr",
     "name",
@@ -43,6 +46,8 @@ pub struct Account {
     pub email: Option<String>,
     pub email_verified: bool,
     pub updated_at: DateTime<Utc>,
+    /// `person`, or `agent` for accounts made through AgentID. The `actor_type` claim.
+    pub kind: String,
 }
 
 /// Disabled users simply stop existing for the provider: no tokens, no userinfo (S18).
@@ -50,7 +55,7 @@ pub async fn find(db: &impl GenericClient, sub: &str) -> Result<Option<Account>>
     let Ok(id) = Uuid::parse_str(sub) else { return Ok(None) };
     let row = db
         .query_opt(
-            "SELECT id, display_name, preferred_username::text, email::text, email_verified, updated_at \
+            "SELECT id, display_name, preferred_username::text, email::text, email_verified, updated_at, kind \
              FROM users WHERE id = $1 AND status = 'active'",
             &[&id],
         )
@@ -62,6 +67,7 @@ pub async fn find(db: &impl GenericClient, sub: &str) -> Result<Option<Account>>
         email: r.get(3),
         email_verified: r.get(4),
         updated_at: r.get(5),
+        kind: r.get(6),
     }))
 }
 
@@ -100,6 +106,7 @@ impl Account {
             claims.insert("email_verified".into(), json!(self.email_verified));
         }
         claims.insert("updated_at".into(), json!(self.updated_at.timestamp()));
+        claims.insert("actor_type".into(), json!(self.kind));
         if granted.contains("groups") {
             claims.insert("groups".into(), json!(group_slugs(db, self.id).await?));
         }
@@ -145,6 +152,19 @@ pub async fn lock_user(db: &impl GenericClient, user: Uuid) -> Result<()> {
     db.execute("SELECT id FROM users WHERE id = $1 FOR UPDATE", &[&user])
         .await?;
     Ok(())
+}
+
+pub fn is_agent(kind: &str) -> bool {
+    kind == "agent"
+}
+
+/// The `actor_type` of the account with this `sub`, for introspection.
+pub async fn actor_type(db: &impl GenericClient, sub: &str) -> Result<Option<String>> {
+    let Ok(id) = Uuid::parse_str(sub) else { return Ok(None) };
+    Ok(db
+        .query_opt("SELECT kind FROM users WHERE id = $1", &[&id])
+        .await?
+        .map(|r| r.get(0)))
 }
 
 pub async fn display_name(db: &impl GenericClient, user: Uuid) -> Result<Option<String>> {

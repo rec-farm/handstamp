@@ -27,6 +27,9 @@ pub struct Config {
     pub instance_name: String,
     pub clients_file: Option<PathBuf>,
     pub session_max_days: u64,
+    /// Agent accounts' SSO sessions and grants end this soon: AgentID has no refresh token or
+    /// revocation hook, so this is how fast revoking an agent there takes effect here.
+    pub agent_session_hours: u64,
     pub refresh_token_days: u64,
     pub access_token_minutes: u64,
     pub id_token_minutes: u64,
@@ -242,6 +245,7 @@ impl Config {
             instance_name,
             clients_file: get("HANDSTAMP_CLIENTS_FILE").map(PathBuf::from),
             session_max_days: positive(&mut problems, "SESSION_MAX_DAYS", 14),
+            agent_session_hours: positive(&mut problems, "AGENT_SESSION_HOURS", 24),
             refresh_token_days: positive(&mut problems, "REFRESH_TOKEN_DAYS", 14),
             access_token_minutes: positive(&mut problems, "ACCESS_TOKEN_MINUTES", 10),
             id_token_minutes: positive(&mut problems, "ID_TOKEN_MINUTES", 60),
