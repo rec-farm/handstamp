@@ -19,11 +19,11 @@
     "idp": "tsx --env-file=../../.env src/idp.ts"
   },
   "dependencies": {
-    "oidc-provider": "9.12.2",
+    "oidc-provider": "9.13.3",
     "openid-client": "6.8.8",
-    "tsx": "^4.20.0"
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
-    "@types/oidc-provider": "^9.12.1"
+    "@types/oidc-provider": "^9.13.1"
   }
 }
