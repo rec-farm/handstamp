@@ -58,12 +58,12 @@ pub fn derive_key(root: &[u8], purpose: Purpose) -> [u8; 32] {
 }
 
 pub fn seal(key: &[u8; 32], plaintext: &[u8], aad: &str) -> Vec<u8> {
-    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
+    let cipher = Aes256Gcm::new(&Key::<Aes256Gcm>::from(*key));
     let iv = random_bytes::<IV_BYTES>();
     // aes-gcm appends the tag; the envelope puts it before the ciphertext.
     let mut body = cipher
         .encrypt(
-            Nonce::from_slice(&iv),
+            &Nonce::from(iv),
             Payload {
                 msg: plaintext,
                 aad: aad.as_bytes(),
@@ -87,9 +87,9 @@ pub fn open(key: &[u8; 32], sealed: &[u8], aad: &str) -> Result<Vec<u8>> {
     let tag = &sealed[1 + IV_BYTES..1 + IV_BYTES + TAG_BYTES];
     let mut combined = sealed[1 + IV_BYTES + TAG_BYTES..].to_vec();
     combined.extend_from_slice(tag);
-    Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key))
+    Aes256Gcm::new(&Key::<Aes256Gcm>::from(*key))
         .decrypt(
-            Nonce::from_slice(iv),
+            &Nonce::try_from(iv).expect("the IV is IV_BYTES long"),
             Payload {
                 msg: &combined,
                 aad: aad.as_bytes(),
